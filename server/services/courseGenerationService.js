@@ -2,9 +2,15 @@ import { GoogleGenAI, Type } from '@google/genai';
 import config from '../config/env.js';
 import { DEPTHS, LESSONS_PER_MODULE, TITLE_MAX } from '../utils/courseConstants.js';
 
-const GENERATION_TIMEOUT_MS = 90_000;
+const GENERATION_TIMEOUT_MS = 90_000; // overall deadline across all attempts
+const ATTEMPT_TIMEOUT_MS = 40_000;
+const MAX_ATTEMPTS = 3;
+const MIN_REMAINING_MS = 5_000; // don't start an attempt with less than this left
+const BACKOFF_MS = [1000, 2000]; // before a retry on the same model
+const JITTER_MS = 250;
 
 const AI_FAILED_MESSAGE = "The AI couldn't generate this course. Please try again.";
+const AI_BUSY_MESSAGE = 'The AI service is busy right now. Please try again in a minute.';
 const AI_TIMEOUT_MESSAGE = 'Course generation timed out. Please try again.';
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
@@ -103,45 +109,127 @@ export function validateOutline(raw, depth) {
   };
 }
 
-export async function generateCourseOutline({ topic, depth, sideQuest, hinglishAudio }) {
-  const controller = new AbortController();
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(Object.assign(httpError(504, AI_TIMEOUT_MESSAGE), { isTimeout: true }));
-    }, GENERATION_TIMEOUT_MS);
+// Primary model first, then the optional fallback. Read at call time so config changes are picked up.
+const modelList = () => [...new Set([config.geminiModel, config.geminiFallbackModel].filter(Boolean))];
+
+// 'config' = wrong key or model name (retrying the same model is pointless); everything else from
+// the SDK (429, 5xx, network errors with no status) is treated as the service being busy.
+const classifyApiError = (err) => ([400, 401, 403, 404].includes(Number(err?.status)) ? 'config' : 'busy');
+
+const attemptFailure = (kind, err) => Object.assign(new Error(err?.message ?? kind), { kind, upstreamStatus: err?.status });
+
+const sleep = (ms, signal) =>
+  new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener('abort', done, { once: true });
   });
+
+// One Gemini call with its own timeout, also aborted when the overall deadline hits.
+// Resolves to a validated outline, or throws an error with `kind`: 'busy' | 'bad-output' | 'config'.
+async function attemptOnce(model, input, deadlineSignal, budgetMs) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  deadlineSignal.addEventListener('abort', abort, { once: true });
+
+  const aborted = new Promise((_, reject) => {
+    controller.signal.addEventListener('abort', () => reject(attemptFailure('busy')), { once: true });
+  });
+  aborted.catch(() => {}); // only observed through the race below
+  const timer = setTimeout(abort, Math.min(ATTEMPT_TIMEOUT_MS, budgetMs));
 
   let text;
   try {
     const response = await Promise.race([
       getClient().models.generateContent({
-        model: config.geminiModel,
-        contents: buildPrompt({ topic, depth, sideQuest, hinglishAudio }),
+        model,
+        contents: buildPrompt(input),
         config: {
           responseMimeType: 'application/json',
           responseSchema,
           abortSignal: controller.signal,
         },
       }),
-      timeout,
+      aborted,
     ]);
     text = response.text;
   } catch (err) {
-    if (err.isTimeout) throw err;
-    console.error(`[generation] Gemini call failed: ${err.message}`);
-    throw httpError(502, AI_FAILED_MESSAGE);
+    throw err.kind ? err : attemptFailure(classifyApiError(err), err);
   } finally {
     clearTimeout(timer);
+    deadlineSignal.removeEventListener('abort', abort);
   }
 
-  let parsed;
   try {
-    parsed = JSON.parse(text);
+    return validateOutline(JSON.parse(text), input.depth);
   } catch {
-    console.error('[generation] Gemini returned unparseable JSON');
-    throw httpError(502, AI_FAILED_MESSAGE);
+    throw attemptFailure('bad-output');
   }
-  return validateOutline(parsed, depth);
+}
+
+export async function generateCourseOutline(input) {
+  const models = modelList();
+  const startedAt = Date.now();
+  const deadlineAt = startedAt + GENERATION_TIMEOUT_MS;
+  const deadline = new AbortController();
+  const deadlineTimer = setTimeout(() => deadline.abort(), GENERATION_TIMEOUT_MS);
+  const deadlineHit = () => deadline.signal.aborted || Date.now() >= deadlineAt;
+
+  const dead = new Set(); // models that failed with a config error
+  let cursor = 0;
+  let lastModel = null;
+  let lastKind = 'busy';
+  let attempts = 0;
+
+  try {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const live = models.filter((m) => !dead.has(m));
+      if (live.length === 0) break;
+      const model = live[cursor % live.length];
+      cursor++;
+
+      if (model === lastModel) {
+        const wait = BACKOFF_MS[Math.min(attempt - 2, BACKOFF_MS.length - 1)] + Math.random() * JITTER_MS;
+        await sleep(wait, deadline.signal);
+      }
+      if (deadlineHit()) break;
+      const remaining = deadlineAt - Date.now();
+      if (remaining < MIN_REMAINING_MS) break;
+
+      attempts = attempt;
+      lastModel = model;
+      const t0 = Date.now();
+      try {
+        const outline = await attemptOnce(model, input, deadline.signal, remaining);
+        if (attempt > 1) {
+          console.info(`[generation] attempt ${attempt}/${MAX_ATTEMPTS} model=${model} ok after ${Date.now() - t0}ms`);
+        }
+        return outline;
+      } catch (err) {
+        lastKind = err.kind ?? 'busy';
+        const took = `after ${Date.now() - t0}ms`;
+        const head = `[generation] attempt ${attempt}/${MAX_ATTEMPTS} model=${model} failed ${lastKind}`;
+        const status = err.upstreamStatus ? ` (${err.upstreamStatus})` : '';
+        if (deadlineHit()) break;
+        if (lastKind === 'config') {
+          dead.add(model);
+          console.error(`${head}${status} ${took}: ${String(err.message).slice(0, 300)}`);
+        } else {
+          console.warn(`${head}${status} ${took}`);
+        }
+      }
+    }
+
+    if (deadlineHit()) throw httpError(504, AI_TIMEOUT_MESSAGE);
+    console.error(`[generation] giving up after ${attempts} attempt(s); last failure: ${lastKind}`);
+    throw httpError(lastKind === 'busy' ? 503 : 502, lastKind === 'busy' ? AI_BUSY_MESSAGE : AI_FAILED_MESSAGE);
+  } finally {
+    clearTimeout(deadlineTimer);
+    deadline.abort(); // stop anything still pending
+  }
 }

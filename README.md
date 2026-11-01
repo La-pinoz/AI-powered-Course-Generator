@@ -31,7 +31,8 @@ Copy each `.env.example` to `.env` and fill in the values. `.env` files are git-
 | `server/.env` | `AUTH0_AUDIENCE` | API Identifier (same as `VITE_AUTH0_AUDIENCE`) |
 | `server/.env` | `CLIENT_ORIGIN` | `http://localhost:5173` (CORS) |
 | `server/.env` | `GEMINI_API_KEY` | Google AI Studio API key (course generation) |
-| `server/.env` | `GEMINI_MODEL` | Gemini model name, e.g. `gemini-2.5-flash` |
+| `server/.env` | `GEMINI_MODEL` | Gemini model name, e.g. `gemini-3.5-flash-lite` |
+| `server/.env` | `GEMINI_FALLBACK_MODEL` | Optional. Second model tried when the first is busy or slow, e.g. `gemini-3.5-flash` |
 
 The server refuses to start, with a clear message, if any of its variables is missing.
 

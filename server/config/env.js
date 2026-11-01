@@ -28,6 +28,8 @@ const config = Object.freeze({
   clientOrigin: process.env.CLIENT_ORIGIN,
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiModel: process.env.GEMINI_MODEL,
+  // Optional: a second model tried when the first is busy or slow.
+  geminiFallbackModel: process.env.GEMINI_FALLBACK_MODEL?.trim() || null,
 });
 
 export default config;
