@@ -224,6 +224,16 @@ describe('POST /api/courses', () => {
     await createFor(ALICE); // lock released, retry works
   });
 
+  it('503 with the busy message, and releases the lock', async () => {
+    const message = 'The AI service is busy right now. Please try again in a minute.';
+    generateCourseOutline.mockRejectedValueOnce(Object.assign(new Error(message), { status: 503 }));
+    const res = await as(ALICE).post('/api/courses').send(validBody);
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ message });
+
+    await createFor(ALICE); // lock released, retry works
+  });
+
   it('504 with the timeout message', async () => {
     const message = 'Course generation timed out. Please try again.';
     generateCourseOutline.mockRejectedValueOnce(Object.assign(new Error(message), { status: 504 }));
