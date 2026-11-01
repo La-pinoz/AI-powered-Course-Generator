@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/* Dashboard palette. `static` emits every variable even when no Tailwind utility uses it, because the
+   Chakra-based dashboard reads them as var(--color-app-*) (see src/theme/system.js). */
+@theme static {
+  --color-app-bg: #0D0D09;
+  --color-app-sidebar: #111110;
+  --color-app-surface: #151513; /* cards, inputs, menus */
+  --color-app-border: #262622;
+  --color-app-text: #F5F5F0;
+  --color-app-muted: #A3A39A;
+  --color-app-accent: #E2583E; /* selected, focus, checkbox */
+  --color-app-success: #8A9A3B; /* progress */
+  --color-app-brand: #881810; /* primary button text, avatar */
+  --color-app-danger: #F87171; /* errors and destructive text */
+  --color-app-danger-surface: #2A1411;
+}
+
 :root {
   --font-heading: 'HelveticaNowDisplay-Medium', 'Helvetica Neue', Arial, sans-serif;
   --font-body: 'HelveticaNowDisplayW01-Rg', 'Helvetica Neue', Arial, sans-serif;

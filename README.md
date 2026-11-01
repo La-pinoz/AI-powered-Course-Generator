@@ -30,6 +30,8 @@ Copy each `.env.example` to `.env` and fill in the values. `.env` files are git-
 | `server/.env` | `AUTH0_ISSUER_BASE_URL` | `https://` + tenant domain + trailing `/` |
 | `server/.env` | `AUTH0_AUDIENCE` | API Identifier (same as `VITE_AUTH0_AUDIENCE`) |
 | `server/.env` | `CLIENT_ORIGIN` | `http://localhost:5173` (CORS) |
+| `server/.env` | `GEMINI_API_KEY` | Google AI Studio API key (course generation) |
+| `server/.env` | `GEMINI_MODEL` | Gemini model name, e.g. `gemini-2.5-flash` |
 
 The server refuses to start, with a clear message, if any of its variables is missing.
 
@@ -56,5 +58,21 @@ The Vite dev server proxies `/api` to `http://localhost:5000`.
 | GET | `/api/health` | none | Liveness check |
 | POST | `/api/users/sync` | Bearer JWT | Find-or-create the user by Auth0 `sub`, refresh profile and `lastLoginAt` |
 | GET | `/api/users/me` | Bearer JWT | Return the stored user (404 if never synced) |
+| GET | `/api/courses` | Bearer JWT | The caller's courses (newest activity first) with progress counts and totals |
+| POST | `/api/courses` | Bearer JWT | Generate a course outline with Gemini and save it (`topic`, `depth`, `sideQuest`, `hinglishAudio`). 409 if one is already generating, 502/504 on AI failure or timeout |
+| GET | `/api/courses/:courseId/outline` | Bearer JWT | Modules and lessons (no lesson content) with completed flags |
+| DELETE | `/api/courses/:courseId` | Bearer JWT | Delete the course, its modules and its lessons (204) |
+| PATCH | `/api/courses/:courseId/progress` | Bearer JWT | Mark a lesson completed or not, and/or make it the current lesson |
+
+A course that doesn't exist or belongs to someone else is a `404` on every `:courseId` route.
 
 Every error response is `{ "message": string }`.
+
+## Tests
+
+```bash
+cd server
+npm test        # Vitest + supertest; Gemini is mocked and Mongo runs in memory
+```
+
+The first run downloads a `mongod` binary for `mongodb-memory-server`.
