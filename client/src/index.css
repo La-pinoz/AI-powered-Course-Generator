@@ -25,15 +25,3 @@ body {
 .animate-blink {
   animation: blink 1s step-end infinite;
 }
-
-/* Used by the "email copied" toast in LandingPage.jsx (was referenced but never defined). */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}

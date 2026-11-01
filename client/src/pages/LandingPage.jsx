@@ -10,7 +10,7 @@ export default function LandingPage() {
   const isSeekingRef = useRef(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState(null); // 'login' | 'signup' | 'demo' | null
+  const [activeModal, setActiveModal] = useState(null); // 'demo' | null
 
   // Background video mouse scrub logic
   useEffect(() => {
@@ -130,11 +130,8 @@ export default function LandingPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Mock auth: no backend yet, so Login / Sign Up / Google all go straight to /profile
-  const handleAuthSuccess = () => {
-    setActiveModal(null);
-    navigate('/profile');
-  };
+  // TODO (Auth0 session): replace with loginWithRedirect({ appState: { returnTo: '/dashboard' } })
+  const handleGetStarted = () => navigate('/dashboard');
 
   return (
     <div className="relative w-screen h-screen overflow-hidden select-text text-white bg-black">
@@ -169,42 +166,21 @@ export default function LandingPage() {
           </span>
         </div>
 
-        {/* Desktop nav links (center-left) */}
-        <nav
-          aria-label="Desktop Navigation"
-          className="hidden md:flex items-center gap-8 lg:gap-10 text-[15px] sm:text-[16px] text-white font-medium"
-        >
-          <a
-            href="/project_working.html"
-            className="hover:opacity-75 transition-opacity cursor-pointer text-white font-medium text-[15px] no-underline"
-          >
-            How it works
-          </a>
-          <button
-            type="button"
-            onClick={() => setActiveModal('demo')}
-            className="hover:opacity-75 transition-opacity cursor-pointer bg-transparent border-none p-0 text-white font-medium text-[15px]"
-          >
-            Demo
-          </button>
-        </nav>
-
-        {/* Desktop CTA (right) */}
+        {/* Desktop links (right) */}
         <div className="hidden md:flex items-center gap-6">
           <button
             type="button"
-            onClick={() => setActiveModal('login')}
+            onClick={() => setActiveModal('demo')}
             className="text-[15px] text-white hover:opacity-75 transition-opacity cursor-pointer bg-transparent border-none p-0 font-medium"
           >
-            Log in
+            Demo
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveModal('signup')}
-            className="bg-white text-neutral-900 hover:bg-neutral-100 transition-colors font-semibold text-[14px] sm:text-[15px] px-5 py-2 sm:py-2.5 rounded-full cursor-pointer shadow-sm"
+          <a
+            href="/project_working.html"
+            className="bg-white text-neutral-900 hover:bg-neutral-100 transition-colors font-semibold text-[14px] sm:text-[15px] px-5 py-2 sm:py-2.5 rounded-full cursor-pointer shadow-sm no-underline"
           >
-            Sign up free
-          </button>
+            How it works
+          </a>
         </div>
 
         {/* Mobile hamburger (visible below md) */}
@@ -239,12 +215,6 @@ export default function LandingPage() {
           menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <a
-          href="/project_working.html"
-          className="text-[30px] font-medium text-white text-left hover:opacity-75 transition-opacity cursor-pointer no-underline"
-        >
-          How it works
-        </a>
         <button
           type="button"
           onClick={() => {
@@ -255,26 +225,12 @@ export default function LandingPage() {
         >
           Demo
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMenuOpen(false);
-            setActiveModal('login');
-          }}
-          className="text-[30px] font-medium text-white text-left hover:opacity-75 transition-opacity cursor-pointer bg-transparent border-none p-0"
+        <a
+          href="/project_working.html"
+          className="text-[20px] font-semibold bg-white text-neutral-900 text-center py-3.5 rounded-full hover:bg-neutral-100 transition-colors cursor-pointer border-none mt-2 no-underline"
         >
-          Log in
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMenuOpen(false);
-            setActiveModal('signup');
-          }}
-          className="text-[20px] font-semibold bg-white text-neutral-900 text-center py-3.5 rounded-full hover:bg-neutral-100 transition-colors cursor-pointer border-none mt-2"
-        >
-          Sign up free
-        </button>
+          How it works
+        </a>
       </div>
 
       {/* HERO SECTION (z-index: 1) */}
@@ -301,7 +257,7 @@ export default function LandingPage() {
           <div>
             <button
               type="button"
-              onClick={() => setActiveModal('login')}
+              onClick={handleGetStarted}
               className="inline-flex items-center gap-3 bg-white text-[#8B1E17] font-semibold text-base sm:text-[17px] px-7 sm:px-8 py-3.5 sm:py-4 rounded-full shadow-xl hover:bg-neutral-100 hover:scale-[1.02] active:scale-[0.99] transition-all duration-200 cursor-pointer select-none"
             >
               <span>Get started for free</span>
@@ -311,7 +267,7 @@ export default function LandingPage() {
         </div>
       </main>
 
-      <LandingModals activeModal={activeModal} setActiveModal={setActiveModal} onAuthSuccess={handleAuthSuccess} />
+      <LandingModals activeModal={activeModal} setActiveModal={setActiveModal} />
     </div>
   );
 }
