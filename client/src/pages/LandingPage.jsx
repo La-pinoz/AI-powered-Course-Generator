@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth0 } from '@auth0/auth0-react';
 import LandingModals from '../components/LandingModals.jsx';
+import ErrorMessage from '../components/ErrorMessage.jsx';
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const { isAuthenticated, loginWithRedirect, error } = useAuth0();
   const videoRef = useRef(null);
   const prevXRef = useRef(null);
   const targetTimeRef = useRef(0);
@@ -130,8 +133,10 @@ export default function LandingPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // TODO (Auth0 session): replace with loginWithRedirect({ appState: { returnTo: '/dashboard' } })
-  const handleGetStarted = () => navigate('/dashboard');
+  const handleGetStarted = () =>
+    isAuthenticated
+      ? navigate('/dashboard')
+      : loginWithRedirect({ appState: { returnTo: '/dashboard' } });
 
   return (
     <div className="relative w-screen h-screen overflow-hidden select-text text-white bg-black">
@@ -255,6 +260,11 @@ export default function LandingPage() {
 
           {/* 4. Call to Action Button */}
           <div>
+            {error && (
+              <div className="mb-4 max-w-md">
+                <ErrorMessage message={error.message} />
+              </div>
+            )}
             <button
               type="button"
               onClick={handleGetStarted}
