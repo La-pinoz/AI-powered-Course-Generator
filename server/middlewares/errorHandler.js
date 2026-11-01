@@ -10,6 +10,8 @@ export default function errorHandler(err, req, res, next) {
   const status = Number.isInteger(err.status) ? err.status : 500;
   if (status >= 500) console.error('[error]', err);
 
-  const message = status >= 500 && status !== 502 ? 'Something went wrong. Please try again.' : err.message;
+  // 502 (AI failure) and 504 (AI timeout) carry user-facing messages; other 5xx stay generic.
+  const exposed = status === 502 || status === 504;
+  const message = status >= 500 && !exposed ? 'Something went wrong. Please try again.' : err.message;
   return res.status(status).json({ message });
 }

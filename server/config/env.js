@@ -6,6 +6,8 @@ const REQUIRED = [
   'AUTH0_ISSUER_BASE_URL',
   'AUTH0_AUDIENCE',
   'CLIENT_ORIGIN',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
 ];
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
@@ -24,6 +26,8 @@ const config = Object.freeze({
   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL,
   auth0Audience: process.env.AUTH0_AUDIENCE,
   clientOrigin: process.env.CLIENT_ORIGIN,
+  geminiApiKey: process.env.GEMINI_API_KEY,
+  geminiModel: process.env.GEMINI_MODEL,
 });
 
 export default config;
