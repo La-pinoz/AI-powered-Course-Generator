@@ -95,6 +95,7 @@ export async function generateJson({
   totalTimeoutMs,
   messages,
   label = 'generation',
+  onSuccess, // optional ({ model, attempts }) => void, e.g. to record which model answered
 }) {
   const models = modelList();
   const startedAt = Date.now();
@@ -136,6 +137,7 @@ export async function generateJson({
         if (attempt > 1) {
           console.info(`[${label}] attempt ${attempt}/${MAX_ATTEMPTS} model=${model} ok after ${Date.now() - t0}ms`);
         }
+        onSuccess?.({ model, attempts: attempt });
         return result;
       } catch (err) {
         lastKind = err.kind ?? 'busy';
@@ -161,4 +163,131 @@ export async function generateJson({
     clearTimeout(deadlineTimer);
     deadline.abort(); // stop anything still pending
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Text-to-speech (Hinglish audio, Spec 6). Uses the Interactions API, which is what the Gemini TTS
+// models are documented with. Same failure classification and backoff as generateJson.
+
+const TTS_SAMPLE_RATE = 24_000;
+
+const ttsModelList = () => [...new Set([config.ttsModel, config.ttsFallbackModel].filter(Boolean))];
+
+// "audio/l16;rate=24000" or a separate sample_rate field; defaults to 24 kHz.
+const sampleRateOf = (audio) => {
+  if (Number.isInteger(audio?.sample_rate) && audio.sample_rate > 0) return audio.sample_rate;
+  const match = /rate=(\d+)/i.exec(audio?.mime_type ?? '');
+  return match ? Number(match[1]) : TTS_SAMPLE_RATE;
+};
+
+async function speechAttemptOnce({ model, text, style, voice, attemptTimeoutMs, check }, deadlineSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  deadlineSignal?.addEventListener('abort', abort, { once: true });
+  const aborted = new Promise((_, reject) => {
+    controller.signal.addEventListener('abort', () => reject(attemptFailure('busy')), { once: true });
+  });
+  aborted.catch(() => {});
+  const timer = setTimeout(abort, attemptTimeoutMs);
+
+  let audio;
+  try {
+    const interaction = await Promise.race([
+      getClient().interactions.create(
+        {
+          model,
+          input: [
+            {
+              type: 'user_input',
+              content: [{ type: 'text', text, annotations: [{ type: 'speech_metadata', style }] }],
+            },
+          ],
+          response_format: { type: 'audio', mime_type: 'audio/l16', sample_rate: TTS_SAMPLE_RATE },
+          generation_config: { speech_config: [{ voice }] },
+        },
+        { signal: controller.signal },
+      ),
+      aborted,
+    ]);
+    audio = interaction?.output_audio;
+  } catch (err) {
+    throw err.kind ? err : attemptFailure(classifyApiError(err), err);
+  } finally {
+    clearTimeout(timer);
+    deadlineSignal?.removeEventListener('abort', abort);
+  }
+
+  try {
+    if (!audio?.data) throw new Error('no audio in the response');
+    let pcm = Buffer.from(audio.data, 'base64');
+    // A WAV container (if the API ignored the l16 request) starts with a 44-byte RIFF header.
+    if (pcm.subarray(0, 4).toString('ascii') === 'RIFF') pcm = pcm.subarray(44);
+    if (pcm.length < 2) throw new Error('empty audio');
+    if (pcm.length % 2 === 1) pcm = pcm.subarray(0, pcm.length - 1);
+    const result = { pcm, sampleRate: sampleRateOf(audio), model };
+    check?.(result); // e.g. the duration check; throwing counts as bad output and is retried
+    return result;
+  } catch (err) {
+    throw attemptFailure('bad-output', err);
+  }
+}
+
+/**
+ * Speaks `text` with a prebuilt voice and a style instruction (sent as a speech_metadata annotation,
+ * so it is never read aloud). Resolves to { pcm: Buffer (s16le mono), sampleRate, model }.
+ * Up to `maxAttempts` attempts across GEMINI_TTS_MODEL then GEMINI_TTS_FALLBACK_MODEL.
+ * `signal` is the caller's overall deadline. Throws an error with `status` 503 busy, 502 failed or
+ * 504 timeout (when `signal` aborted); upstream messages are only logged.
+ */
+export async function generateSpeech({
+  text,
+  style,
+  voice,
+  attemptTimeoutMs = 90_000,
+  maxAttempts = 2,
+  signal,
+  check,
+  label = 'tts',
+}) {
+  const models = ttsModelList();
+  const dead = new Set();
+  let cursor = 0;
+  let lastModel = null;
+  let lastKind = 'busy';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const live = models.filter((m) => !dead.has(m));
+    if (live.length === 0) break;
+    const model = live[cursor % live.length];
+    cursor++;
+
+    if (model === lastModel) {
+      const wait = BACKOFF_MS[Math.min(attempt - 2, BACKOFF_MS.length - 1)] + Math.random() * JITTER_MS;
+      await sleep(wait, signal ?? new AbortController().signal);
+    }
+    if (signal?.aborted) break;
+
+    lastModel = model;
+    const t0 = Date.now();
+    try {
+      return await speechAttemptOnce({ model, text, style, voice, attemptTimeoutMs, check }, signal);
+    } catch (err) {
+      lastKind = err.kind ?? 'busy';
+      if (signal?.aborted) break;
+      const head = `[${label}] attempt ${attempt}/${maxAttempts} model=${model} failed ${lastKind}`;
+      const status = err.upstreamStatus ? ` (${err.upstreamStatus})` : '';
+      const took = `after ${Date.now() - t0}ms`;
+      if (lastKind === 'config') {
+        dead.add(model);
+        console.error(`${head}${status} ${took}: ${String(err.message).slice(0, 300)}`);
+      } else {
+        const reason = lastKind === 'bad-output' ? `: ${String(err.message).slice(0, 200)}` : '';
+        console.warn(`${head}${status} ${took}${reason}`);
+      }
+    }
+  }
+
+  if (signal?.aborted) throw httpError(504, 'timeout');
+  console.error(`[${label}] giving up; last failure: ${lastKind}`);
+  throw httpError(lastKind === 'busy' ? 503 : 502, lastKind === 'busy' ? 'busy' : 'failed');
 }

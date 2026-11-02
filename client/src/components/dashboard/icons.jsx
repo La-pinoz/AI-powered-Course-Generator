@@ -129,3 +129,24 @@ export const ArrowLeftIcon = (props) => (
     <path d="m11 6-6 6 6 6" />
   </Svg>
 )
+
+export const PlayIcon = (props) => (
+  <Svg {...props}>
+    <path d="M7 4.5v15l12-7.5-12-7.5Z" fill="currentColor" />
+  </Svg>
+)
+
+export const PauseIcon = (props) => (
+  <Svg {...props}>
+    <rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor" />
+    <rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor" />
+  </Svg>
+)
+
+export const DownloadIcon = (props) => (
+  <Svg {...props}>
+    <path d="M12 4v11" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 20h14" />
+  </Svg>
+)
