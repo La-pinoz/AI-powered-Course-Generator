@@ -4,6 +4,8 @@ import Module from '../models/Module.js';
 import Lesson from '../models/Lesson.js';
 import { generateCourseOutline } from './courseGenerationService.js';
 import * as lessonQueue from './lessonQueue.js';
+import * as audioJobs from './audioJobs.js';
+import * as audioStorage from './audioStorage.js';
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 const courseNotFound = () => httpError(404, 'Course not found.');
@@ -176,7 +178,9 @@ export async function deleteCourse(sub, courseId) {
   if (!owned) throw courseNotFound();
 
   lessonQueue.cancelCourse(courseId);
+  audioJobs.cancelCourse(courseId);
   await Lesson.deleteMany({ course: courseId });
+  await audioStorage.deleteByCourse(courseId); // after the lessons, so a finishing audio job finds no lesson
   await Module.deleteMany({ course: courseId });
   await Course.deleteOne({ _id: courseId, creator: sub });
 }

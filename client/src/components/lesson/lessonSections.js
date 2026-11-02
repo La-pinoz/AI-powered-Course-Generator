@@ -1,6 +1,6 @@
 import ExplanationSection from './ExplanationSection.jsx'
 import QuizSection from './QuizSection.jsx'
-import ComingSoonSection from './ComingSoonSection.jsx'
+import HinglishAudioSection from './HinglishAudioSection.jsx'
 
 const quizCount = (lesson) => (lesson.content ?? []).filter((block) => block.type === 'mcq').length
 
@@ -26,6 +26,6 @@ export const lessonSections = [
     title: 'Hinglish audio',
     subtitle: 'Listen to this lesson explained in Hinglish',
     isVisible: ({ course }) => Boolean(course.options?.hinglishAudio),
-    Component: ComingSoonSection,
+    Component: HinglishAudioSection,
   },
 ]

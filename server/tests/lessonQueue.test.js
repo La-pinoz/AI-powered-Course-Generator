@@ -192,11 +192,15 @@ describe('lesson queue', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(generateLessonContent).toHaveBeenCalledTimes(2); // the third course waits
 
-    // Drain: every release lets the next lesson start.
-    for (let i = 0; i < 20 && releases.length > 0; i++) {
-      releases.splice(0).forEach((release) => release());
-      await new Promise((r) => setTimeout(r, 30));
-    }
+    // Drain: every release lets the next lesson start. Waits on the outcome, not a fixed time, so a
+    // slow machine (other test files running in parallel) can't leave a call unreleased.
+    await vi.waitFor(
+      async () => {
+        releases.splice(0).forEach((release) => release());
+        expect(await Lesson.countDocuments({ status: 'ready' })).toBe(6);
+      },
+      { timeout: 15_000, interval: 30 },
+    );
     await queue.whenIdle();
 
     expect(peak).toBeLessThanOrEqual(2);
