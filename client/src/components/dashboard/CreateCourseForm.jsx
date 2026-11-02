@@ -3,23 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { Box, Heading, Stack, Text } from '@chakra-ui/react'
 import useCourses from '../../hooks/useCourses.js'
 import { DEFAULT_DEPTH, TOPIC_MAX, TOPIC_MIN } from '../../constants/course.js'
+import { messageFor } from '../../utils/errorMessage.js'
 import TopicInput from './TopicInput.jsx'
 import DepthSelector from './DepthSelector.jsx'
 import FeatureToggles from './FeatureToggles.jsx'
 import GenerateStatus from './GenerateStatus.jsx'
 
-const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.'
-
 const isValidTopic = (topic) => {
   const length = topic.trim().length
   return length >= TOPIC_MIN && length <= TOPIC_MAX
-}
-
-// fetch() rejects with a TypeError when the server can't be reached; Auth0 errors carry `.error`.
-const messageFor = (err) => {
-  if (err instanceof TypeError) return NETWORK_ERROR
-  if (err?.error) return 'Please log in again.'
-  return err?.message || 'Something went wrong. Please try again.'
 }
 
 // States: idle → (invalid submit) validation → idle | loading → (success) navigate | api error.
@@ -70,7 +62,14 @@ export default function CreateCourseForm() {
     try {
       const course = await createCourse(payload)
       // The user may have navigated away while this ran; the course is already in the list.
-      if (mounted.current) navigate(`/courses/${course._id}`)
+      // Straight to the first lesson until the course page exists (a later session switches this back).
+      if (mounted.current) {
+        navigate(
+          course.currentLessonId
+            ? `/courses/${course._id}/lessons/${course.currentLessonId}`
+            : `/courses/${course._id}`,
+        )
+      }
     } catch (err) {
       if (mounted.current) {
         setApiError(messageFor(err))

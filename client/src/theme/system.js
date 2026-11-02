@@ -59,7 +59,7 @@ const config = defineConfig({
           emphasized: tint('accent', 35),
           focusRing: color('accent'),
         },
-        success: color('success'),
+        success: { DEFAULT: color('success'), subtle: tint('success', 15) },
         brand: color('brand'),
         danger: { fg: color('danger'), bg: color('danger-surface') },
       },

@@ -92,3 +92,40 @@ export const MenuIcon = (props) => (
     <path d="M4 18h16" />
   </Svg>
 )
+
+export const XIcon = (props) => (
+  <Svg {...props}>
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </Svg>
+)
+
+export const CopyIcon = (props) => (
+  <Svg {...props}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </Svg>
+)
+
+export const InfoIcon = (props) => (
+  <Svg {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5" />
+    <path d="M12 8h.01" />
+  </Svg>
+)
+
+export const LightbulbIcon = (props) => (
+  <Svg {...props}>
+    <path d="M9 18h6" />
+    <path d="M10 21h4" />
+    <path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z" />
+  </Svg>
+)
+
+export const ArrowLeftIcon = (props) => (
+  <Svg {...props}>
+    <path d="M19 12H5" />
+    <path d="m11 6-6 6 6 6" />
+  </Svg>
+)

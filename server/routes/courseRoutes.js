@@ -8,10 +8,12 @@ import {
   listCourses,
   updateProgress,
 } from '../controllers/courseController.js';
+import lessonRoutes from './lessonRoutes.js';
 
 const router = Router();
 
 router.use(checkJwt);
+router.use('/:courseId/lessons', lessonRoutes);
 
 router.get('/', listCourses);
 router.post('/', createCourse);
