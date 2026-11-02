@@ -18,8 +18,16 @@ vi.mock('../services/courseGenerationService.js', () => ({
   generateCourseOutline: vi.fn(),
 }));
 
+// The real queue would call Gemini; its own behaviour is covered in lessonQueue.test.js.
+vi.mock('../services/lessonQueue.js', () => ({
+  ensureQueued: vi.fn(() => Promise.resolve()),
+  prioritize: vi.fn(),
+  cancelCourse: vi.fn(),
+}));
+
 const { default: app } = await import('../app.js');
 const { generateCourseOutline } = await import('../services/courseGenerationService.js');
+const lessonQueue = await import('../services/lessonQueue.js');
 const { default: Course } = await import('../models/Course.js');
 const { default: Module } = await import('../models/Module.js');
 const { default: Lesson } = await import('../models/Lesson.js');
@@ -69,6 +77,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   generateCourseOutline.mockReset();
+  lessonQueue.ensureQueued.mockClear();
+  lessonQueue.cancelCourse.mockClear();
 });
 
 afterEach(async () => {
@@ -82,6 +92,8 @@ describe('auth', () => {
     ['get', `/api/courses/${new mongoose.Types.ObjectId()}/outline`],
     ['delete', `/api/courses/${new mongoose.Types.ObjectId()}`],
     ['patch', `/api/courses/${new mongoose.Types.ObjectId()}/progress`],
+    ['get', `/api/courses/${new mongoose.Types.ObjectId()}/lessons/${new mongoose.Types.ObjectId()}`],
+    ['post', `/api/courses/${new mongoose.Types.ObjectId()}/lessons/${new mongoose.Types.ObjectId()}/retry`],
   ])('%s %s returns 401 { message } without a token', async (method, url) => {
     const res = await request(app)[method](url);
     expect(res.status).toBe(401);
@@ -116,6 +128,7 @@ describe('GET /api/courses', () => {
     expect(res.body.courses.map((c) => c._id)).toEqual([first._id, second._id]);
     expect(res.body.courses[0]).toMatchObject({
       title: 'Intro to React Hooks',
+      options: { sideQuest: false, hinglishAudio: true },
       moduleCount: 4,
       lessonCount: 12,
       completedLessonCount: 1,
@@ -157,6 +170,10 @@ describe('POST /api/courses', () => {
     const lessons = await Lesson.find({ course: course._id }).lean();
     expect(lessons).toHaveLength(12);
     expect(lessons.every((l) => l.isEnriched === false && l.content.length === 0)).toBe(true);
+    expect(lessons.every((l) => l.status === 'pending')).toBe(true);
+    expect(course.options).toEqual({ sideQuest: false, hinglishAudio: true });
+    expect(lessonQueue.ensureQueued).toHaveBeenCalledTimes(1);
+    expect(String(lessonQueue.ensureQueued.mock.calls[0][0])).toBe(course._id);
     const firstModule = await Module.findOne({ course: course._id, order: 1 }).lean();
     expect(String(firstModule.lessons[0])).toBe(course.currentLessonId);
   });
@@ -288,6 +305,26 @@ describe('GET /api/courses/:courseId/outline', () => {
     expect(after.body.course.modules[0].lessons[0].completed).toBe(true);
   });
 
+  it('returns per-lesson status and ready / failed / total counts, and asks the queue to run', async () => {
+    const course = await createFor(ALICE, validBody, makeOutline(3, 3));
+    const lessons = await Lesson.find({ course: course._id }).sort({ order: 1 }).lean();
+    await Lesson.updateOne({ _id: lessons[0]._id }, { status: 'ready' });
+    await Lesson.updateOne({ _id: lessons[1]._id }, { status: 'ready' });
+    await Lesson.updateOne({ _id: lessons[2]._id }, { status: 'failed' });
+    await Lesson.updateOne({ _id: lessons[3]._id }, { $unset: { status: '' } }); // pre-feature lesson
+
+    lessonQueue.ensureQueued.mockClear();
+    const res = await as(ALICE).get(`/api/courses/${course._id}/outline`);
+    expect(res.status).toBe(200);
+    expect(res.body.course).toMatchObject({ lessonsReady: 2, lessonsFailed: 1, lessonsTotal: 9 });
+
+    const statuses = res.body.course.modules.flatMap((m) => m.lessons.map((l) => l.status));
+    expect(statuses.filter((s) => s === 'ready')).toHaveLength(2);
+    expect(statuses.filter((s) => s === 'failed')).toHaveLength(1);
+    expect(statuses.filter((s) => s === 'pending')).toHaveLength(6); // a missing status reads as pending
+    expect(lessonQueue.ensureQueued).toHaveBeenCalledTimes(1);
+  });
+
   it("404 for another user's course and for a malformed id", async () => {
     const course = await createFor(ALICE);
 
@@ -316,6 +353,7 @@ describe('DELETE /api/courses/:courseId', () => {
     expect(await Course.countDocuments({ _id: course._id })).toBe(0);
     expect(await Module.countDocuments({ course: course._id })).toBe(0);
     expect(await Lesson.countDocuments({ course: course._id })).toBe(0);
+    expect(lessonQueue.cancelCourse).toHaveBeenCalledWith(course._id);
     // The other course is untouched.
     expect(await Lesson.countDocuments({ course: other._id })).toBe(12);
   });

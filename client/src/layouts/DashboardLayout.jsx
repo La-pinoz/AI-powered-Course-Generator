@@ -50,19 +50,27 @@ function DashboardShell({ user }) {
           color="fg"
           fontFamily="body"
           minH="100dvh"
-          h={{ md: '100dvh' }}
-          overflow={{ md: 'hidden' }}
           display={{ md: 'flex' }}
         >
           {/* `id` is the target of the link's href; it matches <main id="main"> below. */}
           <SkipNavLink id="main">Skip to main content</SkipNavLink>
 
-          <Box hideBelow="md" w={{ md: '240px', lg: '280px' }} flexShrink="0" h="full">
+          {/* The page scrolls as a whole (the window's scrollbar is the only one); the sidebar stays
+              pinned to the viewport and scrolls its own course list. */}
+          <Box
+            hideBelow="md"
+            w={{ md: '240px', lg: '280px' }}
+            flexShrink="0"
+            position="sticky"
+            top="0"
+            h="100dvh"
+            alignSelf="flex-start"
+          >
             <Sidebar />
           </Box>
           <SidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen} finalFocusRef={menuButtonRef} />
 
-          <Flex direction="column" flex="1" minW="0" overflowY={{ md: 'auto' }}>
+          <Flex direction="column" flex="1" minW="0">
             <TopBar user={user} onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} />
             <Box
               as="main"

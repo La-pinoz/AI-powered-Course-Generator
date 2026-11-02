@@ -1,7 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMatch } from 'react-router-dom'
 import useAuthedApi from '../hooks/useAuthedApi.js'
+import { toaster } from '../components/dashboard/toaster.js'
 import { CoursesContext } from './coursesContext.js'
+
+// Recomputes the readiness counts the outline endpoint returns after a lesson status changes.
+const withCounts = (data) => {
+  const all = data.modules.flatMap((m) => m.lessons)
+  return {
+    ...data,
+    lessonsReady: all.filter((l) => l.status === 'ready').length,
+    lessonsFailed: all.filter((l) => l.status === 'failed').length,
+    lessonsTotal: all.length,
+  }
+}
+
+// Applies `change(lesson)` to every lesson of an outline; returns the new outline data.
+const mapLessons = (data, change) =>
+  withCounts({
+    ...data,
+    modules: data.modules.map((m) => ({ ...m, lessons: m.lessons.map(change) })),
+  })
 
 // Single source of truth for the sidebar tree and the Continue Learning cards.
 // Also owns the tree's expand/collapse state, which lives for as long as the dashboard layout.
@@ -14,6 +33,8 @@ export function CoursesProvider({ children }) {
   // courseId → { status: 'loading' | 'ready' | 'error', data?: outline course, error?: string }
   const [outlines, setOutlines] = useState({})
   const outlinesRef = useRef({})
+  // lessonId → ready lesson (with its content), so going back to a lesson you read is instant.
+  const [lessons, setLessons] = useState({})
 
   const [expandedCourses, setExpandedCourses] = useState(() => new Set())
   const [expandedModules, setExpandedModules] = useState(() => new Set())
@@ -84,6 +105,7 @@ export function CoursesProvider({ children }) {
     delete rest[courseId]
     outlinesRef.current = rest
     setOutlines(rest)
+    setLessons((prev) => Object.fromEntries(Object.entries(prev).filter(([, l]) => l.courseId !== courseId)))
   }, [])
 
   const createCourse = useCallback(
@@ -101,6 +123,131 @@ export function CoursesProvider({ children }) {
       removeCourse(courseId)
     },
     [request, removeCourse],
+  )
+
+  // --- Lessons --------------------------------------------------------------------------------
+
+  const cacheLesson = useCallback((lesson) => {
+    setLessons((prev) => ({ ...prev, [lesson.id]: lesson }))
+  }, [])
+
+  // Keeps the outline's per-lesson status (and the ready / failed / total counts) fresh.
+  const setLessonStatus = useCallback(
+    (courseId, lessonId, status) => {
+      const outline = outlinesRef.current[courseId]
+      if (outline?.status !== 'ready') return
+      const current = outline.data.modules.flatMap((m) => m.lessons).find((l) => l._id === lessonId)
+      if (!current || current.status === status) return
+      setOutline(courseId, {
+        status: 'ready',
+        data: mapLessons(outline.data, (l) => (l._id === lessonId ? { ...l, status } : l)),
+      })
+    },
+    [setOutline],
+  )
+
+  // Flips the completed flag in the outline and adjusts the course's count. Returns whether anything
+  // changed, so callers can roll back exactly what they did.
+  const applyCompleted = useCallback(
+    (courseId, lessonId, completed) => {
+      const outline = outlinesRef.current[courseId]
+      if (outline?.status !== 'ready') return false
+      const current = outline.data.modules.flatMap((m) => m.lessons).find((l) => l._id === lessonId)
+      if (!current || current.completed === completed) return false
+      setOutline(courseId, {
+        status: 'ready',
+        data: mapLessons(outline.data, (l) => (l._id === lessonId ? { ...l, completed } : l)),
+      })
+      setCourses((prev) =>
+        prev.map((c) =>
+          c._id === courseId
+            ? { ...c, completedLessonCount: Math.max(0, c.completedLessonCount + (completed ? 1 : -1)) }
+            : c,
+        ),
+      )
+      return true
+    },
+    [setOutline],
+  )
+
+  // Replaces the optimistic numbers with what the server says.
+  const reconcileProgress = useCallback(
+    (courseId, progress) => {
+      const done = new Set(progress.completedLessonIds)
+      const outline = outlinesRef.current[courseId]
+      if (outline?.status === 'ready') {
+        setOutline(courseId, {
+          status: 'ready',
+          data: {
+            ...mapLessons(outline.data, (l) => ({ ...l, completed: done.has(l._id) })),
+            currentLessonId: progress.currentLessonId,
+          },
+        })
+      }
+      setCourses((prev) =>
+        prev.map((c) =>
+          c._id === courseId
+            ? {
+                ...c,
+                completedLessonCount: progress.completedLessonCount,
+                currentLessonId: progress.currentLessonId,
+              }
+            : c,
+        ),
+      )
+    },
+    [setOutline],
+  )
+
+  // Optimistic: the sidebar tick, card progress and stats line update at once, and roll back with a
+  // toast if the request fails. Resolves to whether it worked.
+  const setLessonCompleted = useCallback(
+    async (courseId, lessonId, completed) => {
+      const changed = applyCompleted(courseId, lessonId, completed)
+      try {
+        const data = await request(`/courses/${courseId}/progress`, {
+          method: 'PATCH',
+          body: { lessonId, completed },
+        })
+        reconcileProgress(courseId, data.progress)
+        return true
+      } catch (err) {
+        if (changed) applyCompleted(courseId, lessonId, !completed)
+        toaster.create({
+          title: completed ? "Couldn't mark the lesson as completed" : "Couldn't undo completion",
+          description: err.message,
+          type: 'error',
+          closable: true,
+        })
+        return false
+      }
+    },
+    [request, applyCompleted, reconcileProgress],
+  )
+
+  // Makes a lesson the course's resume point (Continue Learning), quietly, in the background.
+  const setCurrentLesson = useCallback(
+    async (courseId, lessonId) => {
+      const setCurrent = (id) => {
+        setCourses((prev) => prev.map((c) => (c._id === courseId ? { ...c, currentLessonId: id } : c)))
+        const outline = outlinesRef.current[courseId]
+        if (outline?.status === 'ready') {
+          setOutline(courseId, { status: 'ready', data: { ...outline.data, currentLessonId: id } })
+        }
+      }
+      const previous = outlinesRef.current[courseId]?.data?.currentLessonId ?? null
+      setCurrent(lessonId)
+      try {
+        const data = await request(`/courses/${courseId}/progress`, {
+          method: 'PATCH',
+          body: { lessonId, makeCurrent: true },
+        })
+        reconcileProgress(courseId, data.progress)
+      } catch {
+        setCurrent(previous)
+      }
+    },
+    [request, setOutline, reconcileProgress],
   )
 
   // --- Tree expansion -------------------------------------------------------------------------
@@ -197,6 +344,7 @@ export function CoursesProvider({ children }) {
       status,
       error,
       outlines,
+      lessons,
       routeCourseId,
       routeLessonId,
       expandedCourses,
@@ -210,6 +358,10 @@ export function CoursesProvider({ children }) {
       toggleCourse,
       toggleModule,
       getCurrentLessonId,
+      cacheLesson,
+      setLessonStatus,
+      setLessonCompleted,
+      setCurrentLesson,
     }),
     [
       courses,
@@ -217,6 +369,7 @@ export function CoursesProvider({ children }) {
       status,
       error,
       outlines,
+      lessons,
       routeCourseId,
       routeLessonId,
       expandedCourses,
@@ -230,6 +383,10 @@ export function CoursesProvider({ children }) {
       toggleCourse,
       toggleModule,
       getCurrentLessonId,
+      cacheLesson,
+      setLessonStatus,
+      setLessonCompleted,
+      setCurrentLesson,
     ],
   )
 

@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-export async function apiRequest(path, { method = 'GET', body, token } = {}) {
+export async function apiRequest(path, { method = 'GET', body, token, signal } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -8,6 +8,7 @@ export async function apiRequest(path, { method = 'GET', body, token } = {}) {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
 
   let data = null
@@ -18,7 +19,9 @@ export async function apiRequest(path, { method = 'GET', body, token } = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.message || `Request failed (${response.status})`)
+    throw Object.assign(new Error(data?.message || `Request failed (${response.status})`), {
+      status: response.status,
+    })
   }
   return data
 }
