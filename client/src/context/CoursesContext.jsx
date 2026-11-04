@@ -97,6 +97,26 @@ export function CoursesProvider({ children }) {
     [request, setOutline],
   )
 
+  // Re-reads only the lesson statuses (and so the counts) of a cached outline. Never touches `completed`
+  // or `currentLessonId`, because a late response could undo an optimistic progress update.
+  const refreshLessonStatuses = useCallback(
+    async (courseId, { signal } = {}) => {
+      const data = await request(`/courses/${courseId}/outline`, { signal })
+      const outline = outlinesRef.current[courseId]
+      if (outline?.status !== 'ready') return
+      const statuses = new Map(data.course.modules.flatMap((m) => m.lessons).map((l) => [l._id, l.status]))
+      const changed = outline.data.modules
+        .flatMap((m) => m.lessons)
+        .some((l) => statuses.has(l._id) && statuses.get(l._id) !== l.status)
+      if (!changed) return
+      setOutline(courseId, {
+        status: 'ready',
+        data: mapLessons(outline.data, (l) => ({ ...l, status: statuses.get(l._id) ?? l.status })),
+      })
+    },
+    [request, setOutline],
+  )
+
   const addCourse = useCallback((course) => {
     setCourses((prev) => [course, ...prev.filter((c) => c._id !== course._id)])
   }, [])
@@ -358,6 +378,7 @@ export function CoursesProvider({ children }) {
       expandedModules,
       fetchCourses,
       fetchOutline,
+      refreshLessonStatuses,
       createCourse,
       addCourse,
       deleteCourse,
@@ -384,6 +405,7 @@ export function CoursesProvider({ children }) {
       expandedModules,
       fetchCourses,
       fetchOutline,
+      refreshLessonStatuses,
       createCourse,
       addCourse,
       deleteCourse,
