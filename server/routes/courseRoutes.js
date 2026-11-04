@@ -9,11 +9,13 @@ import {
   updateProgress,
 } from '../controllers/courseController.js';
 import lessonRoutes from './lessonRoutes.js';
+import moduleVideoRoutes from './moduleVideoRoutes.js';
 
 const router = Router();
 
 router.use(checkJwt);
 router.use('/:courseId/lessons', lessonRoutes);
+router.use('/:courseId/modules/:moduleId/video', moduleVideoRoutes);
 
 router.get('/', listCourses);
 router.post('/', createCourse);

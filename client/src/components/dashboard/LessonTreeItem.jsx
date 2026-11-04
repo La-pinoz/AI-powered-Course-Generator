@@ -4,9 +4,11 @@ import useCourses from '../../hooks/useCourses.js'
 import { CheckIcon } from './icons.jsx'
 
 export default function LessonTreeItem({ course, lesson }) {
-  const { getCurrentLessonId, routeCourseId, routeLessonId } = useCourses()
+  const { getCurrentLessonId, routeCourseId, routeLessonId, routeModuleId } = useCourses()
 
-  const isCurrent = getCurrentLessonId(course) === lesson._id
+  // While this course's video page is open, only its row is highlighted.
+  const onVideoPage = routeCourseId === course._id && Boolean(routeModuleId)
+  const isCurrent = !onVideoPage && getCurrentLessonId(course) === lesson._id
   // `aria-current="page"` only when this lesson is the page being viewed.
   const isOpenPage = routeCourseId === course._id && routeLessonId === lesson._id
 

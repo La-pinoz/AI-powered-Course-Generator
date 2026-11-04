@@ -9,6 +9,7 @@ import LessonFooter from '../components/lesson/LessonFooter.jsx'
 import LessonSkeleton from '../components/lesson/LessonSkeleton.jsx'
 import LessonStatusCard from '../components/lesson/LessonStatusCard.jsx'
 import { lessonSections } from '../components/lesson/lessonSections.js'
+import { courseSteps, stepsAround } from '../utils/courseSteps.js'
 
 // /courses/:courseId/lessons/:lessonId. Title and objectives show as soon as the server answers, even
 // while the lesson is still being written; the sections appear once its content is ready.
@@ -27,17 +28,15 @@ export default function LessonPage() {
   const outline = outlines[courseId]
   const outlineReady = outline?.status === 'ready'
 
-  // Previous / Next across module boundaries, from the cached outline.
+  // This lesson, and Previous / Next through the module videos and lessons, from the cached outline.
   const { current, prev, next } = useMemo(() => {
     if (!outlineReady) return { current: null, prev: null, next: null }
-    const flat = outline.data.modules.flatMap((m) => m.lessons)
-    const index = flat.findIndex((l) => l._id === lessonId)
+    const { modules } = outline.data
     return {
-      current: flat[index] ?? null,
-      prev: flat[index - 1] ?? null,
-      next: index === -1 ? null : (flat[index + 1] ?? null),
+      current: modules.flatMap((m) => m.lessons).find((l) => l._id === lessonId) ?? null,
+      ...stepsAround(courseSteps(courseId, modules), `lesson-${lessonId}`),
     }
-  }, [outlineReady, outline, lessonId])
+  }, [outlineReady, outline, courseId, lessonId])
 
   // New lesson: back to the top, and focus its heading once it has rendered (a lesson change doesn't
   // reload the page, so keyboard and screen-reader users would otherwise stay where they were).
@@ -87,7 +86,6 @@ export default function LessonPage() {
           {status === 'failed' && <LessonStatusCard kind="failed" onRetry={retry} />}
         </Box>
         <LessonFooter
-          courseId={courseId}
           completed={Boolean(current?.completed)}
           canComplete={status === 'ready' && outlineReady}
           onToggleComplete={(completed) => setLessonCompleted(courseId, lessonId, completed)}

@@ -12,6 +12,7 @@ export default defineConfig({
       CLIENT_ORIGIN: 'http://localhost:5173',
       GEMINI_API_KEY: 'test-key',
       GEMINI_MODEL: 'test-model',
+      YOUTUBE_API_KEY: 'test-key',
     },
     testTimeout: 30_000,
     hookTimeout: 120_000, // first run downloads a mongod binary for mongodb-memory-server

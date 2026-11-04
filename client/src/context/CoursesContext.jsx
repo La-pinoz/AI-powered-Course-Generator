@@ -43,6 +43,8 @@ export function CoursesProvider({ children }) {
   const lessonMatch = useMatch('/courses/:courseId/lessons/:lessonId')
   const routeCourseId = courseMatch?.params.courseId ?? null
   const routeLessonId = lessonMatch?.params.lessonId ?? null
+  const videoMatch = useMatch('/courses/:courseId/modules/:moduleId/video')
+  const routeModuleId = videoMatch?.params.moduleId ?? null
 
   const stats = useMemo(
     () => ({
@@ -306,7 +308,8 @@ export function CoursesProvider({ children }) {
     fetchOutline(target)
   }, [routeCourseId, status, courses, fetchOutline])
 
-  // Once an outline has arrived, open the module that holds the current lesson (or Module 1).
+  // Once an outline has arrived, open the module on a video route, else the one holding the current
+  // lesson (or Module 1).
   useEffect(() => {
     const toOpen = []
     for (const courseId of pendingModuleFor.current) {
@@ -314,16 +317,19 @@ export function CoursesProvider({ children }) {
       if (outline?.status !== 'ready') continue
       pendingModuleFor.current.delete(courseId)
       const { modules, currentLessonId } = outline.data
-      const lessonId = routeCourseId === courseId && routeLessonId ? routeLessonId : currentLessonId
+      const onRoute = routeCourseId === courseId
+      const lessonId = onRoute && routeLessonId ? routeLessonId : currentLessonId
       const holder =
-        modules.find((m) => m.lessons.some((l) => l._id === lessonId)) ?? modules[0]
+        (onRoute && routeModuleId && modules.find((m) => m._id === routeModuleId)) ||
+        modules.find((m) => m.lessons.some((l) => l._id === lessonId)) ||
+        modules[0]
       if (holder) toOpen.push(holder._id)
     }
-    // Opening a lesson by URL (e.g. a pasted link) should also reveal it in the tree.
+    // Opening a lesson or video by URL (e.g. a pasted link) should also reveal it in the tree.
     const routeOutline = routeCourseId && outlines[routeCourseId]
-    if (routeLessonId && routeOutline?.status === 'ready') {
-      const holder = routeOutline.data.modules.find((m) =>
-        m.lessons.some((l) => l._id === routeLessonId),
+    if (routeOutline?.status === 'ready') {
+      const holder = routeOutline.data.modules.find(
+        (m) => m._id === routeModuleId || m.lessons.some((l) => l._id === routeLessonId),
       )
       if (holder) toOpen.push(holder._id)
     }
@@ -335,7 +341,7 @@ export function CoursesProvider({ children }) {
         return next
       })
     }
-  }, [outlines, routeCourseId, routeLessonId])
+  }, [outlines, routeCourseId, routeLessonId, routeModuleId])
 
   const value = useMemo(
     () => ({
@@ -347,6 +353,7 @@ export function CoursesProvider({ children }) {
       lessons,
       routeCourseId,
       routeLessonId,
+      routeModuleId,
       expandedCourses,
       expandedModules,
       fetchCourses,
@@ -372,6 +379,7 @@ export function CoursesProvider({ children }) {
       lessons,
       routeCourseId,
       routeLessonId,
+      routeModuleId,
       expandedCourses,
       expandedModules,
       fetchCourses,

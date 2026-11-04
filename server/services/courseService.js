@@ -6,6 +6,7 @@ import { generateCourseOutline } from './courseGenerationService.js';
 import * as lessonQueue from './lessonQueue.js';
 import * as audioJobs from './audioJobs.js';
 import * as audioStorage from './audioStorage.js';
+import * as videoJobs from './videoJobs.js';
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 const courseNotFound = () => httpError(404, 'Course not found.');
@@ -179,6 +180,7 @@ export async function deleteCourse(sub, courseId) {
 
   lessonQueue.cancelCourse(courseId);
   audioJobs.cancelCourse(courseId);
+  videoJobs.cancelCourse(courseId);
   await Lesson.deleteMany({ course: courseId });
   await audioStorage.deleteByCourse(courseId); // after the lessons, so a finishing audio job finds no lesson
   await Module.deleteMany({ course: courseId });
