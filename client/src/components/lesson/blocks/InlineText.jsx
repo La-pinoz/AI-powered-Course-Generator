@@ -1,20 +1,16 @@
 import { Box } from '@chakra-ui/react'
-
-// AI-written text is plain text with only **bold** and `inline code`. Both are parsed into React
-// elements here; nothing is ever injected as HTML, and links are not supported.
-const TOKEN = /(\*\*[^*\n]+\*\*|`[^`\n]+`)/g
+import { parseInlineText } from '../../../utils/inlineText.js'
 
 export default function InlineText({ text }) {
-  const parts = String(text ?? '').split(TOKEN)
-  return parts.map((part, index) => {
-    if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) {
+  return parseInlineText(text).map((part, index) => {
+    if (part.type === 'bold') {
       return (
         <Box as="strong" key={index} fontWeight="semibold" color="fg">
-          {part.slice(2, -2)}
+          {part.text}
         </Box>
       )
     }
-    if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
+    if (part.type === 'code') {
       return (
         <Box
           as="code"
@@ -27,10 +23,10 @@ export default function InlineText({ text }) {
           fontSize="0.9em"
           overflowWrap="anywhere"
         >
-          {part.slice(1, -1)}
+          {part.text}
         </Box>
       )
     }
-    return part
+    return part.text
   })
 }

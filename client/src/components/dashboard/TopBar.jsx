@@ -1,10 +1,15 @@
 import { Box, Flex, Heading, IconButton } from '@chakra-ui/react'
+import useCoursePdfExport from '../../hooks/useCoursePdfExport.js'
 import useCourses from '../../hooks/useCourses.js'
+import useOutlineStatusPolling from '../../hooks/useOutlineStatusPolling.js'
+import DownloadPdfButton from './DownloadPdfButton.jsx'
 import { MenuIcon } from './icons.jsx'
 import UserMenu from './UserMenu.jsx'
 
 export default function TopBar({ user, onOpenMenu, menuButtonRef }) {
   const { courses, routeCourseId } = useCourses()
+  const { activeExport, startExport } = useCoursePdfExport()
+  useOutlineStatusPolling(routeCourseId)
 
   // "Dashboard" on the dashboard; the course title on course routes.
   const title = routeCourseId
@@ -44,6 +49,9 @@ export default function TopBar({ user, onOpenMenu, menuButtonRef }) {
         >
           {title}
         </Heading>
+        {routeCourseId && (
+          <DownloadPdfButton courseId={routeCourseId} activeExport={activeExport} onExport={startExport} />
+        )}
         <UserMenu user={user} />
       </Flex>
     </Box>

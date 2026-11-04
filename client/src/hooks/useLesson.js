@@ -80,6 +80,8 @@ export default function useLesson(courseId, lessonId) {
     setFetched((prev) => ({ ...prev, lessonId, status: 'pending', error: null }))
     try {
       await request(`/courses/${courseId}/lessons/${lessonId}/retry`, { method: 'POST' })
+      // Straight away, so the outline's counts and polling follow even if the user has moved on.
+      setLessonStatus(courseId, lessonId, 'pending')
     } catch (err) {
       if (err?.status !== 409) {
         // 409 means it is ready already (another tab); reloading shows it.
@@ -88,7 +90,7 @@ export default function useLesson(courseId, lessonId) {
       }
     }
     setReloadTick((tick) => tick + 1)
-  }, [request, courseId, lessonId])
+  }, [request, courseId, lessonId, setLessonStatus])
 
   if (cached) return { status: 'ready', lesson: cached, error: null, retry, reload }
   const current =
