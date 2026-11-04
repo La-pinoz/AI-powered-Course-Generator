@@ -2,6 +2,7 @@ import { Box, Collapsible, Text } from '@chakra-ui/react'
 import useCourses from '../../hooks/useCourses.js'
 import { ChevronDownIcon, ChevronRightIcon } from './icons.jsx'
 import LessonTreeItem from './LessonTreeItem.jsx'
+import ModuleVideoTreeItem from './ModuleVideoTreeItem.jsx'
 
 export default function ModuleTreeItem({ course, module }) {
   const { expandedModules, toggleModule } = useCourses()
@@ -35,6 +36,7 @@ export default function ModuleTreeItem({ course, module }) {
         </Collapsible.Trigger>
         <Collapsible.Content>
           <Box as="ul" listStyleType="none" m="0" p="0">
+            <ModuleVideoTreeItem course={course} module={module} />
             {module.lessons.map((lesson) => (
               <LessonTreeItem key={lesson._id} course={course} lesson={lesson} />
             ))}

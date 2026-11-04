@@ -26,6 +26,18 @@ const positiveInt = (name, fallback) => {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 };
 
+// ISO 3166-1 alpha-2 country for YouTube search. Unset means IN; an invalid value means no regionCode.
+export const parseRegionCode = (raw) => {
+  const value = raw?.trim();
+  if (!value) return 'IN';
+  return /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : null;
+};
+
+const youtubeRegionCode = parseRegionCode(process.env.YOUTUBE_REGION_CODE);
+if (youtubeRegionCode === null) {
+  console.warn('[config] YOUTUBE_REGION_CODE is not a two-letter country code; searching without a region.');
+}
+
 const config = Object.freeze({
   port: Number(process.env.PORT),
   mongodbUri: process.env.MONGODB_URI,
@@ -47,6 +59,11 @@ const config = Object.freeze({
   audioGenConcurrency: positiveInt('AUDIO_GEN_CONCURRENCY', 1),
   audioDailyLimitPerUser: positiveInt('AUDIO_DAILY_LIMIT_PER_USER', 10),
   audioTotalTimeoutMs: positiveInt('AUDIO_TOTAL_TIMEOUT_MS', 300_000),
+  // Optional module video settings (in-memory job runner, cap and quota stops; single process only).
+  youtubeApiKey: process.env.YOUTUBE_API_KEY?.trim() || null,
+  youtubeRegionCode,
+  videoGenConcurrency: positiveInt('VIDEO_GEN_CONCURRENCY', 2),
+  videoDailyLimitPerUser: positiveInt('VIDEO_DAILY_LIMIT_PER_USER', 20),
 });
 
 export default config;
