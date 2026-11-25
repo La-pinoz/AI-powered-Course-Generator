@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import LandingPage from './pages/LandingPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
-import CoursePlaceholder from './pages/CoursePlaceholder.jsx'
+import CoursePage from './pages/CoursePage.jsx'
 import LessonPage from './pages/LessonPage.jsx'
 import ModuleVideoPage from './pages/ModuleVideoPage.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -19,7 +19,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/courses/:courseId" element={<CoursePlaceholder />} />
+        <Route path="/courses/:courseId" element={<CoursePage />} />
         <Route path="/courses/:courseId/lessons/:lessonId" element={<LessonPage />} />
         <Route path="/courses/:courseId/modules/:moduleId/video" element={<ModuleVideoPage />} />
       </Route>

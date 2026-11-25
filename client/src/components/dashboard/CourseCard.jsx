@@ -1,68 +1,69 @@
 import { useState } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
-import { Flex, Heading, LinkBox, LinkOverlay, Progress, Text } from '@chakra-ui/react'
+import { Link } from 'react-router-dom'
+import useAuthedApi from '../../hooks/useAuthedApi.js'
+import useCourses from '../../hooks/useCourses.js'
 import { courseMeta } from '../../utils/format.js'
-import CourseCardMenu from './CourseCardMenu.jsx'
-import DeleteCourseDialog from './DeleteCourseDialog.jsx'
+import { messageFor } from '../../utils/errorMessage.js'
+import ProgressBar from '../ProgressBar.jsx'
 
-export default function CourseCard({ course, onDeleted }) {
-  const [confirmOpen, setConfirmOpen] = useState(false)
+// One course in the Continue Learning list: title, progress, Continue and Delete.
+export default function CourseCard({ course }) {
+  const request = useAuthedApi()
+  const { refreshCourses } = useCourses()
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
 
-  // Resume point, or the course page if it has none.
-  const href = course.currentLessonId
+  // Continue from the last opened lesson, or open the course page.
+  const continueLink = course.currentLessonId
     ? `/courses/${course._id}/lessons/${course.currentLessonId}`
     : `/courses/${course._id}`
 
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete "${course.title}"? All its modules, lessons and progress will be permanently deleted.`,
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await request(`/courses/${course._id}`, { method: 'DELETE' })
+      await refreshCourses()
+    } catch (err) {
+      setError(messageFor(err))
+      setDeleting(false)
+    }
+  }
+
   return (
-    <LinkBox
-      as="article"
-      p="5"
-      bg="bg.panel"
-      borderWidth="1px"
-      borderColor="border.subtle"
-      rounded="xl"
-      _hover={{ borderColor: 'accent' }}
-    >
-      <Flex align="flex-start" justify="space-between" gap="3">
-        <Heading as="h3" size="lg" fontWeight="medium" letterSpacing="tight" flex="1" minW="0" truncate>
-          <LinkOverlay
-            asChild
-            _focusVisible={{ outline: '2px solid', outlineColor: 'accent', outlineOffset: '4px' }}
-          >
-            <RouterLink to={href} title={course.title}>
-              {course.title}
-            </RouterLink>
-          </LinkOverlay>
-        </Heading>
-        <CourseCardMenu course={course} onDelete={() => setConfirmOpen(true)} />
-      </Flex>
+    <article className="rounded-xl border border-line bg-white p-5">
+      <h3 className="truncate text-lg font-medium">
+        <Link to={`/courses/${course._id}`} className="hover:underline" title={course.title}>
+          {course.title}
+        </Link>
+      </h3>
+      <p className="mt-1 text-sm text-muted">{courseMeta(course)}</p>
 
-      <Text mt="1" fontSize="sm" color="text.muted">
-        {courseMeta(course)}
-      </Text>
-
-      <Progress.Root
-        mt="4"
+      <ProgressBar
+        className="mt-4"
         value={course.completedLessonCount}
-        min={0}
         max={course.lessonCount}
-        size="sm"
-      >
-        {/* The progressbar role lives on the Track part, so the accessible name goes here. */}
-        <Progress.Track bg="bg.muted" aria-label={`${course.title} progress`}>
-          <Progress.Range bg="success" />
-        </Progress.Track>
-      </Progress.Root>
-      <Text mt="3" fontSize="sm" color="text.muted">
-        {course.completedLessonCount}/{course.lessonCount} lessons completed
-      </Text>
-
-      <DeleteCourseDialog
-        course={course}
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        onDeleted={onDeleted}
+        label={`${course.title} progress`}
       />
-    </LinkBox>
+      <p className="mt-2 text-sm text-muted">
+        {course.completedLessonCount}/{course.lessonCount} lessons completed
+      </p>
+
+      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+
+      <div className="mt-4 flex gap-3">
+        <Link to={continueLink} className="btn btn-primary">
+          Continue
+        </Link>
+        <button type="button" className="btn btn-secondary text-red-700" onClick={handleDelete} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
+    </article>
   )
 }

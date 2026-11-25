@@ -291,7 +291,11 @@ describe('GET /api/courses/:courseId/outline', () => {
     expect(before.status).toBe(200);
 
     const { modules } = before.body.course;
-    expect(before.body.course).toMatchObject({ _id: course._id, title: 'Intro to React Hooks' });
+    expect(before.body.course).toMatchObject({
+      _id: course._id,
+      title: 'Intro to React Hooks',
+      description: 'Learn hooks.',
+    });
     expect(modules.map((m) => m.order)).toEqual([1, 2, 3]);
     expect(modules[0].lessons.map((l) => l.order)).toEqual([1, 2, 3]);
     expect(modules[0].lessons[0]).not.toHaveProperty('content');

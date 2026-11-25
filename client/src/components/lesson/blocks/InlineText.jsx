@@ -1,30 +1,15 @@
-import { Box } from '@chakra-ui/react'
 import { parseInlineText } from '../../../utils/inlineText.js'
 
+// AI text may contain **bold** and `code`. We turn those into real <strong> and <code> elements and
+// never insert the text as HTML, so it can't inject markup.
 export default function InlineText({ text }) {
   return parseInlineText(text).map((part, index) => {
-    if (part.type === 'bold') {
-      return (
-        <Box as="strong" key={index} fontWeight="semibold" color="fg">
-          {part.text}
-        </Box>
-      )
-    }
+    if (part.type === 'bold') return <strong key={index}>{part.text}</strong>
     if (part.type === 'code') {
       return (
-        <Box
-          as="code"
-          key={index}
-          px="1.5"
-          py="0.5"
-          rounded="md"
-          bg="bg.muted"
-          fontFamily="mono"
-          fontSize="0.9em"
-          overflowWrap="anywhere"
-        >
+        <code key={index} className="rounded bg-line/60 px-1.5 py-0.5 font-mono text-[0.9em]">
           {part.text}
-        </Box>
+        </code>
       )
     }
     return part.text

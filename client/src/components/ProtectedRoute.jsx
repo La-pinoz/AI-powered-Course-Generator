@@ -4,7 +4,7 @@ import LoadingSpinner from './LoadingSpinner.jsx'
 // Wrap a page in <ProtectedRoute> so unauthenticated visitors are sent to
 // Auth0 Universal Login, then returned to the page they asked for.
 const ProtectedRoute = withAuthenticationRequired(({ children }) => children, {
-  onRedirecting: () => <LoadingSpinner />,
+  onRedirecting: () => <LoadingSpinner fullScreen />,
 })
 
 export default ProtectedRoute
