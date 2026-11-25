@@ -1,116 +1,62 @@
-import { useId } from 'react'
-import { Box, Button, Flex, Text, VisuallyHidden } from '@chakra-ui/react'
-import { CheckIcon, XIcon } from '../../dashboard/icons.jsx'
+import { useState } from 'react'
 import InlineText from './InlineText.jsx'
 
-// One self-check question. Controlled by QuizSection: `answer` is { selected, checked } or undefined.
-// Right and wrong are shown with an icon and hidden text as well as colour.
-export default function MCQBlock({ block, index, answer, onSelect, onCheck }) {
-  const name = useId()
-  const selected = answer?.selected ?? null
-  const checked = answer?.checked === true
-  const correct = checked && selected === block.answer
+// One self-check question. The answer is kept only in this component; it isn't saved.
+export default function MCQBlock({ block, number }) {
+  const [selected, setSelected] = useState(null)
+  const [checked, setChecked] = useState(false)
+  const correct = selected === block.answer
+
+  const optionClass = (index) => {
+    if (checked && index === block.answer) return 'border-success bg-success/10'
+    if (checked && index === selected) return 'border-red-400 bg-red-50'
+    return 'border-line hover:bg-cream'
+  }
 
   return (
-    <Box
-      as="fieldset"
-      m="0"
-      minW="0"
-      p={{ base: '4', md: '5' }}
-      bg="bg.panel"
-      borderWidth="1px"
-      borderColor="border.subtle"
-      rounded="xl"
-    >
-      <Box as="legend" px="1" fontWeight="medium" lineHeight="1.6">
-        {index + 1}. <InlineText text={block.question} />
-      </Box>
+    <fieldset className="rounded-xl border border-line bg-white p-4 md:p-5">
+      <legend className="px-1 font-medium">
+        {number}. <InlineText text={block.question} />
+      </legend>
 
-      <Flex direction="column" gap="2" mt="3">
-        {block.options.map((option, optionIndex) => {
-          const isRight = checked && optionIndex === block.answer
-          const isWrongPick = checked && optionIndex === selected && optionIndex !== block.answer
-          return (
-            <Flex
-              as="label"
-              key={optionIndex}
-              align="center"
-              gap="3"
-              minH="44px"
-              px="3"
-              py="2"
-              rounded="lg"
-              borderWidth="1px"
-              borderColor={isRight ? 'success' : isWrongPick ? 'danger.fg' : 'border.subtle'}
-              bg={isRight ? 'success.subtle' : isWrongPick ? 'danger.bg' : 'transparent'}
-              cursor={checked ? 'default' : 'pointer'}
-              _hover={checked ? undefined : { bg: 'bg.muted' }}
-              _focusWithin={{ outline: '2px solid', outlineColor: 'accent', outlineOffset: '2px' }}
-            >
-              <Box
-                as="input"
-                type="radio"
-                name={name}
-                value={optionIndex}
-                checked={selected === optionIndex}
-                disabled={checked}
-                onChange={() => onSelect(optionIndex)}
-                accentColor="accent"
-                w="4"
-                h="4"
-                flexShrink="0"
-              />
-              <Text as="span" flex="1" minW="0" overflowWrap="anywhere">
-                <InlineText text={option} />
-              </Text>
-              {isRight && (
-                <>
-                  <Box as="span" display="inline-flex" color="success">
-                    <CheckIcon size="18px" />
-                  </Box>
-                  <VisuallyHidden>(correct answer)</VisuallyHidden>
-                </>
-              )}
-              {isWrongPick && (
-                <>
-                  <Box as="span" display="inline-flex" color="danger.fg">
-                    <XIcon size="18px" />
-                  </Box>
-                  <VisuallyHidden>(your answer, incorrect)</VisuallyHidden>
-                </>
-              )}
-            </Flex>
-          )
-        })}
-      </Flex>
+      <div className="mt-2 space-y-2">
+        {block.options.map((option, index) => (
+          <label key={index} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${optionClass(index)}`}>
+            <input
+              type="radio"
+              name={`question-${number}`}
+              checked={selected === index}
+              onChange={() => setSelected(index)}
+              disabled={checked}
+              className="accent-accent"
+            />
+            <span className="flex-1">
+              <InlineText text={option} />
+            </span>
+            {checked && index === block.answer && <span className="text-success">✓ Correct answer</span>}
+          </label>
+        ))}
+      </div>
 
-      {!checked && (
-        <Button
+      {checked ? (
+        <div className="mt-4" aria-live="polite">
+          <p className={`font-semibold ${correct ? 'text-success' : 'text-red-700'}`}>
+            {correct ? 'Correct!' : 'Not quite.'}
+          </p>
+          <p className="mt-1 text-muted">
+            <InlineText text={block.explanation} />
+          </p>
+        </div>
+      ) : (
+        <button
           type="button"
-          mt="4"
-          variant="outline"
-          borderColor="border.emphasized"
-          minH="44px"
+          className="btn btn-secondary mt-4"
           disabled={selected === null}
-          onClick={() => onCheck(index)}
+          onClick={() => setChecked(true)}
         >
-          Check
-        </Button>
+          Check answer
+        </button>
       )}
-
-      {/* Always mounted so screen readers announce the result when it appears. */}
-      <Box aria-live="polite" mt={checked ? '4' : '0'}>
-        {checked && (
-          <>
-            <Text fontWeight="semibold" color={correct ? 'success' : 'danger.fg'}>
-              {correct ? 'Correct' : 'Not quite'}
-            </Text>
-            <Text mt="1" color="text.muted" lineHeight="1.7">
-              <InlineText text={block.explanation} />
-            </Text>
-          </>
-        )}
-      </Box>
-    </Box>
+    </fieldset>
   )
 }

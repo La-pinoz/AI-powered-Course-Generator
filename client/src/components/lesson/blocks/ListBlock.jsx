@@ -1,23 +1,14 @@
-import { Box } from '@chakra-ui/react'
 import InlineText from './InlineText.jsx'
 
 export default function ListBlock({ block }) {
+  const List = block.ordered ? 'ol' : 'ul'
   return (
-    <Box
-      as={block.ordered ? 'ol' : 'ul'}
-      ps="6"
-      m="0"
-      display="flex"
-      flexDirection="column"
-      gap="2"
-      listStyleType={block.ordered ? 'decimal' : 'disc'}
-      lineHeight="1.7"
-    >
+    <List className={`space-y-1 pl-6 leading-relaxed ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
       {block.items.map((item, index) => (
         <li key={index}>
           <InlineText text={item} />
         </li>
       ))}
-    </Box>
+    </List>
   )
 }

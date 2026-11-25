@@ -1,192 +1,100 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Box, Button, Flex, Heading, Skeleton, Text, VisuallyHidden } from '@chakra-ui/react'
+import { Link, useParams } from 'react-router-dom'
+import ErrorMessage from '../components/ErrorMessage.jsx'
+import LoadingSpinner from '../components/LoadingSpinner.jsx'
+import NotFound from '../components/NotFound.jsx'
+import StepNav from '../components/lesson/StepNav.jsx'
 import useCourses from '../hooks/useCourses.js'
 import useModuleVideo from '../hooks/useModuleVideo.js'
-import PillButton from '../components/dashboard/PillButton.jsx'
-import { toaster } from '../components/dashboard/toaster.js'
-import StepNav from '../components/lesson/StepNav.jsx'
-import VideoPlayer from '../components/video/VideoPlayer.jsx'
-import VideoStatusCard from '../components/video/VideoStatusCard.jsx'
 import { courseSteps, lessonPath, stepsAround } from '../utils/courseSteps.js'
+import { messageFor } from '../utils/errorMessage.js'
 
-const formatLength = (seconds) => {
-  if (!Number.isFinite(seconds)) return null
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}:${String(Math.round(seconds % 60)).padStart(2, '0')}`
-}
-
-// /courses/:courseId/modules/:moduleId/video. Not a lesson: it never touches progress, the resume point
-// or the lesson counts. "Start Lesson 1" is its Next action, so the nav row only shows Previous.
+// /courses/:courseId/modules/:moduleId/video
+// A YouTube video picked for the module. Keyed by moduleId so each module starts with fresh state.
 export default function ModuleVideoPage() {
   const { courseId, moduleId } = useParams()
-  const { courses, status: coursesStatus, outlines, fetchOutline } = useCourses()
-  const { status, approved, selectedVideoId, canSearchAgain, error, retry, selectVideo, reportUnavailable, reload } =
-    useModuleVideo(courseId, moduleId)
-  const headingRef = useRef(null)
-  const [switching, setSwitching] = useState(false)
-  const [announcement, setAnnouncement] = useState('')
+  return <ModuleVideo key={moduleId} courseId={courseId} moduleId={moduleId} />
+}
 
-  useEffect(() => {
-    fetchOutline(courseId)
-  }, [courseId, fetchOutline])
+function ModuleVideo({ courseId, moduleId }) {
+  const { outline } = useCourses()
+  const { video, error, reload, retry, selectVideo, reportUnavailable } = useModuleVideo(courseId, moduleId)
 
-  const outline = outlines[courseId]
-  const outlineReady = outline?.status === 'ready'
-  const module = outlineReady ? outline.data.modules.find((m) => m._id === moduleId) : null
+  if (error?.status === 404) return <NotFound what="Module" />
 
-  const { prev } = useMemo(
-    () =>
-      outlineReady
-        ? stepsAround(courseSteps(courseId, outline.data.modules), `video-${moduleId}`)
-        : { prev: null },
-    [outlineReady, outline, courseId, moduleId],
-  )
-
-  // New module: back to the top, and focus its heading once it has rendered.
-  const focusedFor = useRef(null)
-  const moduleKnown = Boolean(module)
-  useEffect(() => {
-    if (!moduleKnown || focusedFor.current === moduleId) return
-    focusedFor.current = moduleId
-    window.scrollTo(0, 0)
-    headingRef.current?.focus({ preventScroll: true })
-  }, [moduleKnown, moduleId])
-
-  // Says when a search the learner waited for has finished.
-  const previousStatus = useRef(status)
-  useEffect(() => {
-    if (previousStatus.current === 'searching' && status === 'ready') setAnnouncement('Video ready.')
-    previousStatus.current = status
-  }, [status])
-
-  const handleUnavailable = useCallback(
-    async (videoId) => {
-      try {
-        const body = await reportUnavailable(videoId)
-        setAnnouncement(
-          body.status === 'ready'
-            ? "That video isn't available. Showing another."
-            : 'No suitable video found for this module.',
-        )
-      } catch {
-        toaster.create({ title: "That video isn't available", description: 'Please try another video.', type: 'error', closable: true })
-      }
-    },
-    [reportUnavailable],
-  )
-
-  const selectedIndex = approved.findIndex((v) => v.videoId === selectedVideoId)
-  const video = approved[selectedIndex] ?? null
-
-  const showAnother = async () => {
-    const nextVideo = approved[(selectedIndex + 1) % approved.length]
-    setSwitching(true)
-    try {
-      await selectVideo(nextVideo.videoId)
-    } catch (err) {
-      toaster.create({ title: "Couldn't change the video", description: err.message, type: 'error', closable: true })
-    } finally {
-      setSwitching(false)
-    }
-  }
-
-  const notFound =
-    status === 'notFound' ||
-    (coursesStatus === 'ready' && !courses.some((c) => c._id === courseId)) ||
-    (outlineReady && !module)
-
-  if (notFound) {
-    return (
-      <Box maxW="760px" mx="auto" pb="8">
-        <VideoStatusCard kind="notFound" />
-      </Box>
-    )
-  }
-
-  if (outline?.status === 'error') {
-    return (
-      <Box maxW="760px" mx="auto" pb="8">
-        <VideoStatusCard kind="error" message={outline.error} onRetry={() => fetchOutline(courseId)} />
-      </Box>
-    )
-  }
-
+  const module = outline?.modules.find((m) => m._id === moduleId)
   const firstLesson = module?.lessons[0]
-  const retryAction = status === 'error' ? reload : retry
+  const { prev } = outline ? stepsAround(courseSteps(courseId, outline.modules), `video-${moduleId}`) : {}
+
+  const approved = video?.approved ?? []
+  const selectedIndex = approved.findIndex((v) => v.videoId === video?.selectedVideoId)
+  const selected = approved[selectedIndex]
+  const nextVideo = approved.length > 1 ? approved[(selectedIndex + 1) % approved.length] : null
+
+  let body
+  if (error) {
+    // 429 (daily limit) and 503 (YouTube unavailable) come with a readable message from the server.
+    body = <ErrorMessage message={messageFor(error)} onRetry={reload} />
+  } else if (!video) {
+    body = <LoadingSpinner label="Loading video…" />
+  } else if (video.status === 'searching') {
+    body = <LoadingSpinner label="Finding a video for this module… this usually takes 10–30 seconds." />
+  } else if (video.status === 'ready' && selected) {
+    body = (
+      <>
+        <iframe
+          className="aspect-video w-full rounded-2xl bg-black"
+          src={`https://www.youtube-nocookie.com/embed/${selected.videoId}?rel=0`}
+          title={`YouTube video: ${selected.title}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+        <p className="mt-4 font-medium">{selected.title}</p>
+        <p className="text-sm text-muted">{selected.channelTitle} · YouTube</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {nextVideo && (
+            <button type="button" className="btn btn-secondary" onClick={() => selectVideo(nextVideo.videoId)}>
+              Show another video
+            </button>
+          )}
+          <button type="button" className="btn btn-secondary" onClick={() => reportUnavailable(selected.videoId)}>
+            Video not working? Try the next one
+          </button>
+        </div>
+      </>
+    )
+  } else {
+    // 'none' or 'failed'
+    const canTryAgain = video.status === 'failed' || video.canSearchAgain
+    body = (
+      <div className="card">
+        <p className="font-medium">
+          {video.status === 'failed' ? "We couldn't find a video right now." : 'No suitable video found for this module.'}
+        </p>
+        {canTryAgain && (
+          <button type="button" className="btn btn-secondary mt-4" onClick={retry}>
+            Search again
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <Box maxW="760px" mx="auto" pb="8">
-      <Box as="header">
-        {module ? (
-          <>
-            <Text fontSize="sm" color="text.muted">
-              Module {module.order} video
-            </Text>
-            <Heading
-              as="h2"
-              ref={headingRef}
-              tabIndex={-1}
-              mt="1"
-              size={{ base: '2xl', md: '3xl' }}
-              fontWeight="medium"
-              letterSpacing="tight"
-              _focusVisible={{ outline: 'none' }}
-            >
-              {module.title}
-            </Heading>
-          </>
-        ) : (
-          <>
-            <Skeleton h="4" w="30%" />
-            <Skeleton h="9" w="70%" mt="3" />
-          </>
-        )}
-      </Box>
+    <article className="space-y-6">
+      <header>
+        <p className="text-sm text-muted">Module {module?.order} video</p>
+        <h1 className="mt-1 text-3xl font-medium">{module?.title ?? 'Module video'}</h1>
+      </header>
 
-      <Box mt="6">
-        {status === 'ready' && video ? (
-          <>
-            <VideoPlayer key={video.videoId} video={video} onUnavailable={handleUnavailable} />
-            <Text mt="4" fontWeight="medium">
-              {video.title}
-            </Text>
-            <Text color="text.muted" fontSize="sm">
-              {[video.channelTitle, formatLength(video.durationSec)].filter(Boolean).join(' · ')} · YouTube
-            </Text>
-          </>
-        ) : (
-          <VideoStatusCard
-            kind={status === 'ready' ? 'none' : status}
-            message={error}
-            canSearchAgain={canSearchAgain}
-            onRetry={retryAction}
-          />
-        )}
-      </Box>
+      {body}
 
-      <Flex mt="6" gap="3" wrap="wrap" align="center">
-        {firstLesson && (
-          <PillButton to={lessonPath(courseId, firstLesson._id)}>Start Lesson 1</PillButton>
-        )}
-        {status === 'ready' && approved.length > 1 && (
-          <Button
-            type="button"
-            variant="outline"
-            borderColor="border.emphasized"
-            minH="44px"
-            disabled={switching}
-            onClick={showAnother}
-          >
-            Show another video
-          </Button>
-        )}
-      </Flex>
-
-      {/* Persistent so the screen reader announces each change. */}
-      <VisuallyHidden aria-live="polite">{announcement}</VisuallyHidden>
+      {firstLesson && (
+        <Link to={lessonPath(courseId, firstLesson._id)} className="btn btn-primary">
+          Start Lesson 1 →
+        </Link>
+      )}
 
       <StepNav prev={prev} next={null} />
-    </Box>
+    </article>
   )
 }

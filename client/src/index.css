@@ -1,19 +1,15 @@
 @import "tailwindcss";
 
-/* Dashboard palette. `static` emits every variable even when no Tailwind utility uses it, because the
-   Chakra-based dashboard reads them as var(--color-app-*) (see src/theme/system.js). */
-@theme static {
-  --color-app-bg: #0D0D09;
-  --color-app-sidebar: #111110;
-  --color-app-surface: #151513; /* cards, inputs, menus */
-  --color-app-border: #262622;
-  --color-app-text: #F5F5F0;
-  --color-app-muted: #A3A39A;
-  --color-app-accent: #E2583E; /* selected, focus, checkbox */
-  --color-app-success: #8A9A3B; /* progress */
-  --color-app-brand: #881810; /* primary button text, avatar */
-  --color-app-danger: #F87171; /* errors and destructive text */
-  --color-app-danger-surface: #2A1411;
+/* App palette (light, warm cream like the landing page). Each one becomes a Tailwind utility,
+   e.g. bg-cream, text-ink, border-line, bg-brand. */
+@theme {
+  --color-cream: #FAF6EE; /* page background */
+  --color-ink: #1F2421; /* main text */
+  --color-muted: #6B675E; /* secondary text */
+  --color-line: #E7E0D2; /* borders */
+  --color-accent: #E2583E; /* highlights and focus rings */
+  --color-brand: #881810; /* primary buttons */
+  --color-success: #4F6B1A; /* progress and completed */
 }
 
 :root {
@@ -27,6 +23,37 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reusable building blocks for the logged-in app, so pages don't repeat long class lists. */
+@layer components {
+  .app h1,
+  .app h2,
+  .app h3 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
+  }
+
+  .card {
+    @apply rounded-2xl border border-line bg-white p-5 md:p-8;
+  }
+
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Used together with .btn: className="btn btn-primary" */
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-brand/90;
+  }
+
+  .btn-secondary {
+    @apply border border-line bg-white text-ink hover:bg-cream;
+  }
+
+  .app :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
 }
 
 @keyframes blink {

@@ -50,7 +50,7 @@ export async function listCourses(sub) {
 
 export async function getOutline(sub, courseId) {
   const course = await Course.findOne({ _id: courseId, creator: sub })
-    .select('title progress')
+    .select('title description progress')
     .lean();
   if (!course) throw courseNotFound();
 
@@ -85,6 +85,7 @@ export async function getOutline(sub, courseId) {
     course: {
       _id: course._id,
       title: course.title,
+      description: course.description ?? '',
       currentLessonId: course.progress?.currentLesson ?? null,
       lessonsReady: counts.ready,
       lessonsFailed: counts.failed,

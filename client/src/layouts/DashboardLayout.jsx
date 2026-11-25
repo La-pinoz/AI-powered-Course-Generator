@@ -1,137 +1,79 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { Box, ChakraProvider, Flex, SkipNavLink } from '@chakra-ui/react'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import ErrorMessage from '../components/ErrorMessage.jsx'
-import AppToaster from '../components/dashboard/AppToaster.jsx'
-import Sidebar from '../components/dashboard/Sidebar.jsx'
-import SidebarDrawer from '../components/dashboard/SidebarDrawer.jsx'
-import TopBar from '../components/dashboard/TopBar.jsx'
+import Sidebar from '../components/layout/Sidebar.jsx'
+import TopBar from '../components/layout/TopBar.jsx'
 import { CoursesProvider } from '../context/CoursesContext.jsx'
 import { apiRequest } from '../utils/api.js'
-import { system } from '../theme/system.js'
+import { messageFor } from '../utils/errorMessage.js'
 
-// Everything inside is Chakra and dark-only. It is mounted only after the user sync succeeds, so
-// the Tailwind spinner/error below are what the user sees before that.
-function DashboardShell({ user }) {
-  const { pathname } = useLocation()
-  // The drawer is open only for the pathname it was opened at, so any navigation closes it.
-  const [drawerPath, setDrawerPath] = useState(null)
-  const drawerOpen = drawerPath === pathname
-  const setDrawerOpen = useCallback((open) => setDrawerPath(open ? pathname : null), [pathname])
-  const menuButtonRef = useRef(null)
-
-  // Portaled UI (menus, dialogs, the drawer) renders outside the layout root, so the dark theme
-  // class also goes on <html> while the dashboard is mounted. The landing page never has it.
-  useEffect(() => {
-    document.documentElement.classList.add('dark')
-    return () => document.documentElement.classList.remove('dark')
-  }, [])
-
-  // Also close the drawer when the viewport grows past the mobile breakpoint.
-  useEffect(() => {
-    const query = window.matchMedia('(min-width: 768px)')
-    const onChange = (event) => {
-      if (event.matches) setDrawerOpen(false)
-    }
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [setDrawerOpen])
-
-  return (
-    <ChakraProvider value={system}>
-      <CoursesProvider>
-        <Box
-          className="dark"
-          colorPalette="accent"
-          style={{ colorScheme: 'dark' }}
-          bg="bg.app"
-          color="fg"
-          fontFamily="body"
-          minH="100dvh"
-          display={{ md: 'flex' }}
-        >
-          {/* `id` is the target of the link's href; it matches <main id="main"> below. */}
-          <SkipNavLink id="main">Skip to main content</SkipNavLink>
-
-          {/* The page scrolls as a whole (the window's scrollbar is the only one); the sidebar stays
-              pinned to the viewport and scrolls its own course list. */}
-          <Box
-            hideBelow="md"
-            w={{ md: '240px', lg: '280px' }}
-            flexShrink="0"
-            position="sticky"
-            top="0"
-            h="100dvh"
-            alignSelf="flex-start"
-          >
-            <Sidebar />
-          </Box>
-          <SidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen} finalFocusRef={menuButtonRef} />
-
-          <Flex direction="column" flex="1" minW="0">
-            <TopBar user={user} onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} />
-            <Box
-              as="main"
-              id="main"
-              tabIndex={-1}
-              flex="1"
-              w="full"
-              maxW="1200px"
-              mx="auto"
-              p={{ base: '4', md: '8' }}
-              _focusVisible={{ outline: 'none' }}
-            >
-              <Outlet context={{ user }} />
-            </Box>
-          </Flex>
-
-          <AppToaster />
-        </Box>
-      </CoursesProvider>
-    </ChakraProvider>
-  )
-}
-
-// Protected layout route for /dashboard and /courses/*. Syncs the user with the API once.
+// The protected layout for /dashboard and /courses/*: sidebar on the left, top bar and page on the
+// right. First it saves the Auth0 user in our database (POST /users/sync).
 export default function DashboardLayout() {
-  const { getAccessTokenSilently } = useAuth0()
+  const { getAccessTokenSilently, loginWithRedirect } = useAuth0()
+  const location = useLocation()
   const [user, setUser] = useState(null)
   const [error, setError] = useState(null)
-  const [syncing, setSyncing] = useState(true)
-  // Stops React StrictMode's double mount from calling the sync endpoint twice.
-  const hasSynced = useRef(false)
+  // True when Auth0 itself refused to give us a token (e.g. the saved session expired). Retrying
+  // can't fix that; only a fresh login can.
+  const [needsLogin, setNeedsLogin] = useState(false)
+  // On small screens the sidebar is hidden until the menu button opens it.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const syncUser = useCallback(async () => {
-    setSyncing(true)
     setError(null)
+    setNeedsLogin(false)
     try {
       const token = await getAccessTokenSilently()
       const data = await apiRequest('/users/sync', { method: 'POST', token })
       setUser(data.user)
     } catch (err) {
-      setError(err.message)
-    } finally {
-      setSyncing(false)
+      // Auth0 errors carry an `error` code such as 'login_required' or 'missing_refresh_token'.
+      if (err.error) {
+        console.error('Auth0 could not get an access token:', err.error, err.message)
+        setNeedsLogin(true)
+      }
+      setError(messageFor(err))
     }
   }, [getAccessTokenSilently])
 
   useEffect(() => {
-    if (hasSynced.current) return
-    hasSynced.current = true
     syncUser()
   }, [syncUser])
 
-  if (syncing) return <LoadingSpinner label="Setting up your account…" />
-
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAF6EE] px-6">
-        <ErrorMessage message={error} onRetry={syncUser} />
+      <div className="flex min-h-screen items-center justify-center bg-cream px-6">
+        {needsLogin ? (
+          <ErrorMessage
+            message="Your session has expired."
+            retryLabel="Log in again"
+            // After logging in, come back to the page the user was trying to open.
+            onRetry={() => loginWithRedirect({ appState: { returnTo: location.pathname } })}
+          />
+        ) : (
+          <ErrorMessage message={error} onRetry={syncUser} />
+        )}
       </div>
     )
   }
 
-  return <DashboardShell user={user} />
+  if (!user) return <LoadingSpinner label="Setting up your account…" fullScreen />
+
+  return (
+    <CoursesProvider>
+      <div className="app min-h-dvh bg-cream text-ink md:flex">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar user={user} onOpenMenu={() => setSidebarOpen(true)} />
+          <main className="mx-auto w-full max-w-4xl flex-1 p-4 md:p-8">
+            <Outlet />
+          </main>
+        </div>
+      </div>
+    </CoursesProvider>
+  )
 }

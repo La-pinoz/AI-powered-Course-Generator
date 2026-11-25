@@ -1,27 +1,15 @@
-import { Box, Heading, Text } from '@chakra-ui/react'
 import InlineText from './InlineText.jsx'
 
 export default function ExampleBlock({ block }) {
   return (
-    <Box
-      as="aside"
-      bg="accent.subtle"
-      borderWidth="1px"
-      borderColor="accent.muted"
-      borderLeftWidth="4px"
-      borderLeftColor="accent"
-      rounded="xl"
-      p="4"
-    >
-      <Text fontSize="xs" fontWeight="semibold" color="accent.fg" textTransform="uppercase" letterSpacing="wider">
-        Example
-      </Text>
-      <Heading as="h4" size="md" fontWeight="medium" letterSpacing="tight" mt="1">
+    <aside className="rounded-xl border border-accent/30 border-l-4 border-l-accent bg-accent/5 p-4">
+      <p className="text-xs font-semibold tracking-wide text-brand uppercase">Example</p>
+      <h4 className="mt-1 font-semibold">
         <InlineText text={block.title} />
-      </Heading>
-      <Text mt="2" lineHeight="1.7">
+      </h4>
+      <p className="mt-2 leading-relaxed">
         <InlineText text={block.text} />
-      </Text>
-    </Box>
+      </p>
+    </aside>
   )
 }

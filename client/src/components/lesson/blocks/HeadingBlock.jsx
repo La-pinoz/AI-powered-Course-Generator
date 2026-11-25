@@ -1,10 +1,9 @@
-import { Heading } from '@chakra-ui/react'
 import InlineText from './InlineText.jsx'
 
 export default function HeadingBlock({ block }) {
   return (
-    <Heading as="h3" size="lg" fontWeight="medium" letterSpacing="tight" mt="2">
+    <h3 className="mt-2 text-xl font-medium">
       <InlineText text={block.text} />
-    </Heading>
+    </h3>
   )
 }
