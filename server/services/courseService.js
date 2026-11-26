@@ -17,10 +17,7 @@ const generating = new Set();
 const toCourseSummary = (course) => ({
   _id: course._id,
   title: course.title,
-  options: {
-    sideQuest: course.options?.sideQuest ?? false,
-    hinglishAudio: course.options?.hinglishAudio ?? false,
-  },
+  tags: course.tags ?? [],
   moduleCount: course.moduleCount,
   lessonCount: course.lessonCount,
   completedLessonCount: course.progress?.completedLessons?.length ?? 0,
@@ -32,7 +29,7 @@ const toCourseSummary = (course) => ({
 // Every query below filters by `creator`, so another user's course looks like a missing one.
 export async function listCourses(sub) {
   const courses = await Course.find({ creator: sub })
-    .select('title options moduleCount lessonCount progress createdAt lastActivityAt')
+    .select('title tags moduleCount lessonCount progress createdAt lastActivityAt')
     .sort({ lastActivityAt: -1 })
     .lean();
 
@@ -50,13 +47,13 @@ export async function listCourses(sub) {
 
 export async function getOutline(sub, courseId) {
   const course = await Course.findOne({ _id: courseId, creator: sub })
-    .select('title description progress')
+    .select('title description tags progress')
     .lean();
   if (!course) throw courseNotFound();
 
   const [modules, lessons] = await Promise.all([
     Module.find({ course: courseId }).select('title order').sort({ order: 1 }).lean(),
-    Lesson.find({ course: courseId }).select('module title order status').sort({ order: 1 }).lean(),
+    Lesson.find({ course: courseId }).select('module title order status keyTopics').sort({ order: 1 }).lean(),
   ]);
 
   // Opening a course (re)starts any unfinished lesson writing, e.g. after a restart or for courses
@@ -76,6 +73,7 @@ export async function getOutline(sub, courseId) {
       _id: lesson._id,
       order: lesson.order,
       title: lesson.title,
+      keyTopics: lesson.keyTopics ?? [],
       status,
       completed: completed.has(String(lesson._id)),
     });
@@ -86,6 +84,7 @@ export async function getOutline(sub, courseId) {
       _id: course._id,
       title: course.title,
       description: course.description ?? '',
+      tags: course.tags ?? [],
       currentLessonId: course.progress?.currentLesson ?? null,
       lessonsReady: counts.ready,
       lessonsFailed: counts.failed,
@@ -101,7 +100,7 @@ export async function getOutline(sub, courseId) {
 }
 
 // Builds every document with its final ids first, then writes course → modules → lessons.
-async function saveCourse(sub, { topic, depth, sideQuest, hinglishAudio }, outline) {
+async function saveCourse(sub, { topic, depth }, outline) {
   const courseId = new mongoose.Types.ObjectId();
   const moduleDocs = [];
   const lessonDocs = [];
@@ -124,6 +123,7 @@ async function saveCourse(sub, { topic, depth, sideQuest, hinglishAudio }, outli
         title: lesson.title,
         order: lessonIndex + 1,
         objectives: lesson.objectives,
+        keyTopics: lesson.keyTopics,
         status: 'pending',
         content: [],
         isEnriched: false,
@@ -138,8 +138,8 @@ async function saveCourse(sub, { topic, depth, sideQuest, hinglishAudio }, outli
       topic,
       title: outline.title,
       description: outline.description,
+      tags: outline.tags,
       depth,
-      options: { sideQuest, hinglishAudio },
       modules: moduleDocs.map((m) => m._id),
       moduleCount: moduleDocs.length,
       lessonCount: lessonDocs.length,

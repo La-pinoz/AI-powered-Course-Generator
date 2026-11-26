@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const { ObjectId, Mixed } = mongoose.Schema.Types;
+const { ObjectId } = mongoose.Schema.Types;
 
 export const VIDEO_STATUSES = ['searching', 'ready', 'none', 'failed'];
 
@@ -45,8 +45,6 @@ const moduleSchema = new mongoose.Schema(
     order: { type: Number, required: true }, // 1-based
     lessons: [{ type: ObjectId, ref: 'Lesson' }], // in order
     video: { type: moduleVideoSchema, default: null },
-    // Reserved for a later session; null until then.
-    sideQuest: { type: Mixed, default: null }, // {items: [{kind, title, body, searchTerms}], generatedAt}
   },
   { timestamps: true },
 );

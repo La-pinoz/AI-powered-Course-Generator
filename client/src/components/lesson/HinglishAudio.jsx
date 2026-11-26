@@ -2,11 +2,20 @@ import useLessonAudio from '../../hooks/useLessonAudio.js'
 
 // "Listen in Hinglish": the lesson explained in Hinglish by AI, as audio plus a written transcript.
 export default function HinglishAudio({ courseId, lessonId }) {
-  const { audio, audioUrl, error, start } = useLessonAudio(courseId, lessonId)
+  const { audio, audioUrl, error, start, reload } = useLessonAudio(courseId, lessonId)
 
   let body
   if (!audio) {
-    body = <p className="text-muted">{error || 'Loading…'}</p>
+    body = (
+      <>
+        <p className="text-muted">{error || 'Loading…'}</p>
+        {error && (
+          <button type="button" className="btn btn-secondary mt-4" onClick={reload}>
+            Try again
+          </button>
+        )}
+      </>
+    )
   } else if (audio.status === 'generating') {
     body = (
       <p role="status" className="text-muted">

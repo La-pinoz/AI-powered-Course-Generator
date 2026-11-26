@@ -16,15 +16,24 @@ export default function useLessonAudio(courseId, lessonId) {
 
   const [audio, setAudio] = useState(null) // { status, script, error, outdated }
   const [audioUrl, setAudioUrl] = useState(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState('') // from start() or the MP3 download
+  // From the status check. Kept apart so the next successful check clears only this one.
+  const [statusError, setStatusError] = useState('')
 
   const loadStatus = useCallback(async () => {
     try {
       setAudio(await request(path))
+      setStatusError('')
     } catch (err) {
-      setError(messageFor(err))
+      setStatusError(messageFor(err))
     }
   }, [request, path])
+
+  // "Try again" when the very first status check failed (polling only runs while generating).
+  const reload = () => {
+    setStatusError('')
+    loadStatus()
+  }
 
   useEffect(() => {
     loadStatus()
@@ -68,5 +77,5 @@ export default function useLessonAudio(courseId, lessonId) {
     }
   }
 
-  return { audio, audioUrl, error, start }
+  return { audio, audioUrl, error: error || statusError, start, reload }
 }

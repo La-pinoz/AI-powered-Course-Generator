@@ -4,9 +4,10 @@ import useAuthedApi from '../../hooks/useAuthedApi.js'
 import useCourses from '../../hooks/useCourses.js'
 import { courseMeta } from '../../utils/format.js'
 import { messageFor } from '../../utils/errorMessage.js'
+import ChipList from '../ChipList.jsx'
 import ProgressBar from '../ProgressBar.jsx'
 
-// One course in the Continue Learning list: title, progress, Continue and Delete.
+// One course in the Continue Learning list: title, tags, progress, Continue and Delete.
 export default function CourseCard({ course }) {
   const request = useAuthedApi()
   const { refreshCourses } = useCourses()
@@ -42,6 +43,7 @@ export default function CourseCard({ course }) {
           {course.title}
         </Link>
       </h3>
+      <ChipList items={course.tags} label="Course tags" max={3} className="mt-2" />
       <p className="mt-1 text-sm text-muted">{courseMeta(course)}</p>
 
       <ProgressBar

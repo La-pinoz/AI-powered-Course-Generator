@@ -61,6 +61,7 @@ async function seedCourse(creator = ALICE) {
     title: 'What are AI Agents',
     order: 1,
     objectives: ['Define an agent'],
+    keyTopics: ['agent loop', 'tools'],
   });
   return { courseId: String(courseId), moduleId: String(moduleId), lessonId: String(lessonId) };
 }
@@ -104,6 +105,8 @@ describe('GET /api/courses/:courseId/lessons/:lessonId', () => {
       title: 'What are AI Agents',
       order: 1,
       objectives: ['Define an agent'],
+      keyTopics: ['agent loop', 'tools'],
+      readings: [],
       status: 'pending',
     });
     expect(lessonQueue.ensureQueued).toHaveBeenCalledWith(ids.courseId);
@@ -143,6 +146,48 @@ describe('GET /api/courses/:courseId/lessons/:lessonId', () => {
       expect(res.body).not.toHaveProperty(field);
     }
     expect(JSON.stringify(res.body)).not.toContain('SECRET');
+  });
+
+  const storedReadings = [
+    { title: 'Agents: an overview', kind: 'article', searchQuery: 'ai agents overview' },
+    { title: 'Tool use', kind: 'documentation', searchQuery: 'a&b?c#d/e tools' },
+  ];
+
+  it('returns the readings of a ready lesson, each with a search link, and no server-only fields', async () => {
+    const ids = await seedCourse();
+    await Lesson.updateOne(
+      { _id: ids.lessonId },
+      { status: 'ready', content: blocks, readings: storedReadings, videoQuery: 'SECRET', lastError: 'SECRET', attempts: 1 },
+    );
+    const res = await as(ALICE).get(urlFor(ids));
+
+    expect(res.body.readings).toEqual([
+      { ...storedReadings[0], url: 'https://www.google.com/search?q=ai+agents+overview' },
+      { ...storedReadings[1], url: 'https://www.google.com/search?q=a%26b%3Fc%23d%2Fe+tools' },
+    ]);
+    for (const field of ['lastError', 'videoQuery', 'attempts']) {
+      expect(res.body).not.toHaveProperty(field);
+      for (const item of res.body.readings) expect(item).not.toHaveProperty(field);
+    }
+    expect(JSON.stringify(res.body)).not.toContain('SECRET');
+  });
+
+  it.each(['pending', 'generating', 'failed'])('returns readings: [] while the lesson is %s', async (status) => {
+    const ids = await seedCourse();
+    await Lesson.updateOne({ _id: ids.lessonId }, { status, readings: storedReadings });
+    const res = await as(ALICE).get(urlFor(ids));
+    expect(res.body.readings).toEqual([]);
+  });
+
+  it('returns empty key topics and readings for a lesson made before them', async () => {
+    const ids = await seedCourse();
+    await Lesson.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(ids.lessonId) },
+      { $set: { status: 'ready', content: blocks }, $unset: { keyTopics: '', readings: '' } },
+    );
+    const res = await as(ALICE).get(urlFor(ids));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'ready', keyTopics: [], readings: [] });
   });
 
   it('never leaks lastError on a failed lesson', async () => {

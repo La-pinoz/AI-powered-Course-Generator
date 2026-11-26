@@ -95,7 +95,7 @@ const speechOk = async ({ text, check }) => {
   return result;
 };
 
-async function seedCourse({ creator = ALICE, hinglishAudio = true, lessonStatus = 'ready', audio = null } = {}) {
+async function seedCourse({ creator = ALICE, lessonStatus = 'ready', audio = null } = {}) {
   const courseId = new mongoose.Types.ObjectId();
   const moduleId = new mongoose.Types.ObjectId();
   const lessonId = new mongoose.Types.ObjectId();
@@ -108,7 +108,6 @@ async function seedCourse({ creator = ALICE, hinglishAudio = true, lessonStatus 
     moduleCount: 1,
     lessonCount: 1,
     modules: [moduleId],
-    options: { sideQuest: false, hinglishAudio },
   });
   await Module.create({ _id: moduleId, course: courseId, title: 'Foundations', order: 1, lessons: [lessonId] });
   await Lesson.create({
@@ -241,16 +240,27 @@ describe('POST /audio: the pipeline and the cache', () => {
     expect(gemini.generateJson).toHaveBeenCalledTimes(1);
   });
 
-  it('is 409 when the lesson is not ready or the course has Hinglish off', async () => {
+  it('is 409 when the lesson is not ready', async () => {
     const pending = await seedCourse({ lessonStatus: 'pending' });
-    const off = await seedCourse({ hinglishAudio: false });
-    const a = await as(ALICE).post(audioUrl(pending));
-    const b = await as(ALICE).post(audioUrl(off));
-    expect(a.status).toBe(409);
-    expect(a.body).toEqual({ message: "This lesson isn't ready yet." });
-    expect(b.status).toBe(409);
-    expect(b.body).toEqual({ message: 'Hinglish audio is off for this course.' });
+    const res = await as(ALICE).post(audioUrl(pending));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ message: "This lesson isn't ready yet." });
     expect(gemini.generateJson).not.toHaveBeenCalled();
+  });
+
+  // Courses made before Spec 9 still carry the old `options` field in MongoDB; new ones have none.
+  it.each([
+    ['was created with Hinglish audio off', { sideQuest: false, hinglishAudio: false }],
+    ['has no options at all', null],
+  ])('makes and plays audio for a course that %s', async (_name, options) => {
+    const ids = await seedCourse();
+    if (options) {
+      await Course.collection.updateOne({ _id: new mongoose.Types.ObjectId(ids.courseId) }, { $set: { options } });
+    }
+    await makeReady(ids);
+    const file = await as(ALICE).get(audioUrl(ids, '/file'));
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toBe('audio/mpeg');
   });
 
   it('is 429 after the daily limit, while cached audio still answers 200', async () => {

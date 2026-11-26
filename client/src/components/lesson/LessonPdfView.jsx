@@ -1,4 +1,5 @@
 import { parseInlineText } from '../../utils/inlineText.js'
+import { READING_KIND_LABELS } from '../../utils/readingKinds.js'
 
 // The lesson as it should look in the PDF. It is rendered off-screen and photographed by html2canvas.
 //
@@ -7,6 +8,7 @@ import { parseInlineText } from '../../utils/inlineText.js'
 // must therefore be in `style={...}`.
 //
 // Each direct child of the root is captured as one image, so a block is never cut between two pages.
+// A section heading shares a child with its first item, so it is never left alone at a page's end.
 
 const COLORS = { text: '#1F2421', muted: '#6B675E', line: '#E7E0D2', accent: '#E2583E', success: '#4F6B1A' }
 
@@ -119,11 +121,39 @@ function PdfBlock({ item }) {
   }
 }
 
+// The search phrase is printed because links can't be clicked in the image-based PDF.
+function PdfReading({ reading }) {
+  return (
+    <div style={{ ...block, paddingBottom: 8, wordBreak: 'break-word' }}>
+      <strong>{READING_KIND_LABELS[reading.kind]}: </strong>
+      <Inline text={reading.title} />
+      <span style={{ color: COLORS.muted }}> · Search: {reading.searchQuery}</span>
+    </div>
+  )
+}
+
+// A heading and its items, as separate root children except that the heading is wrapped together
+// with the first item. Renders nothing without items.
+function Section({ title, children }) {
+  const [first, ...rest] = children
+  if (!first) return null
+  return (
+    <>
+      <div>
+        <h2 style={{ ...block, fontSize: 20, margin: 0, paddingTop: 10 }}>{title}</h2>
+        {first}
+      </div>
+      {rest}
+    </>
+  )
+}
+
 // React 19 passes `ref` as a normal prop.
 export default function LessonPdfView({ lesson, ref }) {
   const content = lesson.content ?? []
   const explanation = content.filter((item) => item.type !== 'mcq')
   const questions = content.filter((item) => item.type === 'mcq')
+  const readings = lesson.readings ?? []
 
   return (
     <div ref={ref} style={{ width: 700, background: '#FFFFFF', fontFamily: 'Arial, sans-serif' }}>
@@ -151,10 +181,17 @@ export default function LessonPdfView({ lesson, ref }) {
         <PdfBlock key={index} item={item} />
       ))}
 
-      {questions.length > 0 && <h2 style={{ ...block, fontSize: 20, margin: 0, paddingTop: 10 }}>Quiz</h2>}
-      {questions.map((item, index) => (
-        <PdfBlock key={`q${index}`} item={item} />
-      ))}
+      <Section title="Quiz">
+        {questions.map((item, index) => (
+          <PdfBlock key={`q${index}`} item={item} />
+        ))}
+      </Section>
+
+      <Section title="Further reading">
+        {readings.map((reading, index) => (
+          <PdfReading key={`r${index}`} reading={reading} />
+        ))}
+      </Section>
     </div>
   )
 }

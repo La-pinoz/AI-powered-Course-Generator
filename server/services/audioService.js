@@ -24,7 +24,7 @@ const usedToday = (sub) => {
 const countJob = (sub) => usage.set(sub, { day: today(), count: usedToday(sub) + 1 });
 
 async function findOwned(sub, courseId, lessonId) {
-  const course = await Course.findOne({ _id: courseId, creator: sub }).select('title options').lean();
+  const course = await Course.findOne({ _id: courseId, creator: sub }).select('title').lean();
   if (!course) throw httpError(404, 'Course not found.');
   const lesson = await Lesson.findOne({ _id: lessonId, course: courseId }).lean();
   if (!lesson) throw httpError(404, 'Lesson not found.');
@@ -83,8 +83,6 @@ export async function getAudioStatus(sub, courseId, lessonId) {
  */
 export async function startAudio(sub, courseId, lessonId) {
   const owned = await findOwned(sub, courseId, lessonId);
-  const { course } = owned;
-  if (!course.options?.hinglishAudio) throw httpError(409, 'Hinglish audio is off for this course.');
   if ((owned.lesson.status ?? 'pending') !== 'ready') throw httpError(409, "This lesson isn't ready yet.");
 
   const lesson = await withRecovery(owned.lesson);

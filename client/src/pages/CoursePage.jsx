@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import ChipList from '../components/ChipList.jsx'
 import ErrorMessage from '../components/ErrorMessage.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import NotFound from '../components/NotFound.jsx'
@@ -14,13 +15,12 @@ const STATUS_TEXT = {
 
 // /courses/:courseId: the course syllabus. Each module with its video and its lessons.
 export default function CoursePage() {
-  const { courses, courseId, outline, outlineError, refreshOutline } = useCourses()
+  const { courseId, outline, outlineError, refreshOutline } = useCourses()
 
   if (outlineError?.notFound) return <NotFound what="Course" />
   if (outlineError) return <ErrorMessage message={outlineError.message} onRetry={refreshOutline} />
   if (!outline) return <LoadingSpinner label="Loading course…" />
 
-  const course = courses.find((c) => c._id === courseId)
   const lessons = outline.modules.flatMap((module) => module.lessons)
   const completedCount = lessons.filter((lesson) => lesson.completed).length
   const resumeLessonId = outline.currentLessonId ?? lessons[0]?._id
@@ -30,9 +30,9 @@ export default function CoursePage() {
       <header className="card">
         <h1 className="text-3xl font-medium">{outline.title}</h1>
         {outline.description && <p className="mt-3 leading-relaxed">{outline.description}</p>}
+        <ChipList items={outline.tags} label="Course tags" className="mt-3" />
         <p className="mt-2 text-muted">
           {outline.modules.length} modules · {lessons.length} lessons
-          {course?.options.hinglishAudio && ' · Hinglish audio'}
         </p>
 
         <ProgressBar className="mt-5" value={completedCount} max={lessons.length} label="Course progress" />
@@ -74,6 +74,8 @@ export default function CoursePage() {
                     <span className="text-sm text-muted">{STATUS_TEXT[lesson.status]}</span>
                   )}
                 </Link>
+                {/* Outside the link, so screen readers announce it as its own list. */}
+                <ChipList items={lesson.keyTopics} label="Key topics" className="pb-3 pl-8" />
               </li>
             ))}
           </ul>

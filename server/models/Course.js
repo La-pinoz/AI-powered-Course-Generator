@@ -7,10 +7,7 @@ const courseSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true }, // AI-generated
     description: { type: String, trim: true },
     depth: { type: String, enum: ['quick', 'standard', 'in-depth'], required: true },
-    options: {
-      sideQuest: { type: Boolean, default: false },
-      hinglishAudio: { type: Boolean, default: false },
-    },
+    tags: [{ type: String, trim: true }], // from the outline; display only
     modules: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Module' }], // in order
     moduleCount: { type: Number, required: true }, // denormalised for the list endpoint
     lessonCount: { type: Number, required: true },

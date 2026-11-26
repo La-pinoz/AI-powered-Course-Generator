@@ -6,7 +6,7 @@ import { DEFAULT_DEPTH, DEPTH_HELPER, DEPTHS, TOPIC_ERROR, TOPIC_MAX, TOPIC_MIN 
 import { messageFor } from '../../utils/errorMessage.js'
 import ErrorMessage from '../ErrorMessage.jsx'
 
-// The prompt form: the user types a topic, picks options, and the server generates the course outline.
+// The prompt form: the user types a topic, picks a depth, and the server generates the course outline.
 export default function CreateCourseForm() {
   const request = useAuthedApi()
   const { refreshCourses } = useCourses()
@@ -14,8 +14,6 @@ export default function CreateCourseForm() {
 
   const [topic, setTopic] = useState('')
   const [depth, setDepth] = useState(DEFAULT_DEPTH)
-  const [sideQuest, setSideQuest] = useState(false)
-  const [hinglishAudio, setHinglishAudio] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -32,7 +30,7 @@ export default function CreateCourseForm() {
     try {
       const data = await request('/courses', {
         method: 'POST',
-        body: { topic: trimmed, depth, sideQuest, hinglishAudio },
+        body: { topic: trimmed, depth },
       })
       refreshCourses()
       navigate(`/courses/${data.course._id}`)
@@ -89,36 +87,6 @@ export default function CreateCourseForm() {
             ))}
           </div>
           <p className="mt-2 text-sm text-muted">{DEPTH_HELPER}</p>
-        </fieldset>
-
-        <fieldset className="space-y-3">
-          <legend className="mb-2 font-semibold">Extras</legend>
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={sideQuest}
-              onChange={(event) => setSideQuest(event.target.checked)}
-              disabled={loading}
-              className="mt-1 accent-accent"
-            />
-            <span>
-              Side Quest mode
-              <span className="block text-sm text-muted">Extra topics that help you understand the main subject.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={hinglishAudio}
-              onChange={(event) => setHinglishAudio(event.target.checked)}
-              disabled={loading}
-              className="mt-1 accent-accent"
-            />
-            <span>
-              Hinglish audio
-              <span className="block text-sm text-muted">Each lesson can be explained in Hinglish audio.</span>
-            </span>
-          </label>
         </fieldset>
 
         {error && <ErrorMessage message={error} />}

@@ -17,8 +17,9 @@ export const getOutline = asyncHandler(async (req, res) => {
 
 // POST /api/courses
 export const createCourse = asyncHandler(async (req, res) => {
-  // Only these four fields are read; anything else in the body is ignored.
-  const { topic, depth, sideQuest = false, hinglishAudio = false } = req.body ?? {};
+  // Only these two fields are read; anything else in the body is ignored (an older cached client
+  // may still send `sideQuest` and `hinglishAudio`).
+  const { topic, depth } = req.body ?? {};
 
   const trimmed = typeof topic === 'string' ? topic.trim() : '';
   if (trimmed.length < TOPIC_MIN || trimmed.length > TOPIC_MAX) {
@@ -27,16 +28,8 @@ export const createCourse = asyncHandler(async (req, res) => {
   if (typeof depth !== 'string' || !Object.hasOwn(DEPTHS, depth)) {
     throw badRequest('Choose a course depth.');
   }
-  if (typeof sideQuest !== 'boolean' || typeof hinglishAudio !== 'boolean') {
-    throw badRequest('Invalid course options.');
-  }
 
-  const course = await courseService.createCourse(subOf(req), {
-    topic: trimmed,
-    depth,
-    sideQuest,
-    hinglishAudio,
-  });
+  const course = await courseService.createCourse(subOf(req), { topic: trimmed, depth });
   res.status(201).json({ course });
 });
 
