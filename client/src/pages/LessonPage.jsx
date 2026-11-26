@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import ChipList from '../components/ChipList.jsx'
 import ErrorMessage from '../components/ErrorMessage.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import NotFound from '../components/NotFound.jsx'
+import FurtherReading from '../components/lesson/FurtherReading.jsx'
 import HinglishAudio from '../components/lesson/HinglishAudio.jsx'
 import LessonPdfExporter from '../components/lesson/LessonPdfExporter.jsx'
 import LessonRenderer from '../components/lesson/LessonRenderer.jsx'
@@ -24,7 +26,7 @@ export default function LessonPage() {
 
 function Lesson({ courseId, lessonId }) {
   const request = useAuthedApi()
-  const { courses, outline, refreshOutline, refreshCourses } = useCourses()
+  const { outline, refreshOutline, refreshCourses } = useCourses()
   const { lesson, error, reload, retry } = useLesson(courseId, lessonId)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -44,7 +46,6 @@ function Lesson({ courseId, lessonId }) {
   if (error) return <ErrorMessage message={messageFor(error)} onRetry={reload} />
   if (!lesson) return <LoadingSpinner label="Loading lesson…" />
 
-  const course = courses.find((c) => c._id === courseId)
   const outlineLesson = outline?.modules.flatMap((m) => m.lessons).find((l) => l._id === lessonId)
   const completed = Boolean(outlineLesson?.completed)
   const { prev, next } = outline ? stepsAround(courseSteps(courseId, outline.modules), `lesson-${lessonId}`) : {}
@@ -84,6 +85,7 @@ function Lesson({ courseId, lessonId }) {
             </ul>
           </div>
         )}
+        <ChipList items={lesson.keyTopics} label="Key topics" className="mt-4" />
         {ready && (
           <div className="mt-5">
             <LessonPdfExporter lesson={lesson} />
@@ -110,7 +112,8 @@ function Lesson({ courseId, lessonId }) {
             <LessonRenderer content={lesson.content} />
           </section>
           <Quiz content={lesson.content} />
-          {course?.options.hinglishAudio && <HinglishAudio courseId={courseId} lessonId={lessonId} />}
+          <HinglishAudio courseId={courseId} lessonId={lessonId} />
+          <FurtherReading readings={lesson.readings} />
         </>
       )}
 

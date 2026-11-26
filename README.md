@@ -60,7 +60,7 @@ The Vite dev server proxies `/api` to `http://localhost:5000`.
 | POST | `/api/users/sync` | Bearer JWT | Find-or-create the user by Auth0 `sub`, refresh profile and `lastLoginAt` |
 | GET | `/api/users/me` | Bearer JWT | Return the stored user (404 if never synced) |
 | GET | `/api/courses` | Bearer JWT | The caller's courses (newest activity first) with progress counts and totals |
-| POST | `/api/courses` | Bearer JWT | Generate a course outline with Gemini and save it (`topic`, `depth`, `sideQuest`, `hinglishAudio`). 409 if one is already generating, 502/504 on AI failure or timeout |
+| POST | `/api/courses` | Bearer JWT | Generate a course outline with Gemini and save it (`topic`, `depth`). 409 if one is already generating, 502/504 on AI failure or timeout |
 | GET | `/api/courses/:courseId/outline` | Bearer JWT | Modules and lessons (no lesson content) with completed flags |
 | DELETE | `/api/courses/:courseId` | Bearer JWT | Delete the course, its modules and its lessons (204) |
 | PATCH | `/api/courses/:courseId/progress` | Bearer JWT | Mark a lesson completed or not, and/or make it the current lesson |

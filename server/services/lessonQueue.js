@@ -117,7 +117,7 @@ async function loadContext(courseId, lessonId) {
   if (!course) return null;
   const [modules, lessons] = await Promise.all([
     Module.find({ course: courseId }).select('title order').lean(),
-    Lesson.find({ course: courseId }).select('module title order objectives').lean(),
+    Lesson.find({ course: courseId }).select('module title order objectives keyTopics').lean(),
   ]);
   const moduleById = new Map(modules.map((m) => [idOf(m._id), m]));
   const flat = lessons
@@ -169,10 +169,11 @@ async function processLesson(courseId, lessonId) {
           content: result.content,
           summary: result.summary,
           videoQuery: result.videoQuery,
+          readings: result.readings,
           status: 'ready',
           isEnriched: true,
           generatedAt: now,
-          contentVersion: 1,
+          contentVersion: 2,
         },
       },
     ); // matches nothing if the lesson was deleted meanwhile; the result is dropped

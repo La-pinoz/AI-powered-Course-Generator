@@ -38,11 +38,13 @@ const BOB = 'auth0|bob';
 const makeOutline = (modules = 4, lessonsPerModule = 3) => ({
   title: 'Intro to React Hooks',
   description: 'Learn hooks.',
+  tags: ['react', 'hooks'],
   modules: Array.from({ length: modules }, (_, m) => ({
     title: `Module ${m + 1}`,
     lessons: Array.from({ length: lessonsPerModule }, (_, l) => ({
       title: `Lesson ${m + 1}.${l + 1}`,
       objectives: ['Understand it'],
+      keyTopics: ['useState', 're-rendering'],
     })),
   })),
 });
@@ -54,7 +56,7 @@ const as = (sub) => ({
   delete: (url) => request(app).delete(url).set('x-test-sub', sub),
 });
 
-const validBody = { topic: 'Intro to React Hooks', depth: 'standard', sideQuest: false, hinglishAudio: true };
+const validBody = { topic: 'Intro to React Hooks', depth: 'standard' };
 
 async function createFor(sub, body = validBody, outline = makeOutline()) {
   generateCourseOutline.mockResolvedValueOnce(outline);
@@ -128,11 +130,12 @@ describe('GET /api/courses', () => {
     expect(res.body.courses.map((c) => c._id)).toEqual([first._id, second._id]);
     expect(res.body.courses[0]).toMatchObject({
       title: 'Intro to React Hooks',
-      options: { sideQuest: false, hinglishAudio: true },
+      tags: ['react', 'hooks'],
       moduleCount: 4,
       lessonCount: 12,
       completedLessonCount: 1,
     });
+    expect(res.body.courses[0]).not.toHaveProperty('options');
     expect(res.body.stats).toEqual({ courseCount: 2, lessonCount: 24, completedLessonCount: 1 });
   });
 });
@@ -145,12 +148,7 @@ describe('POST /api/courses', () => {
       .send({ ...validBody, topic: '  Intro to React Hooks  ', extra: 'ignored' });
 
     expect(res.status).toBe(201);
-    expect(generateCourseOutline).toHaveBeenCalledWith({
-      topic: 'Intro to React Hooks',
-      depth: 'standard',
-      sideQuest: false,
-      hinglishAudio: true,
-    });
+    expect(generateCourseOutline).toHaveBeenCalledWith({ topic: 'Intro to React Hooks', depth: 'standard' });
 
     const { course } = res.body;
     expect(course).toMatchObject({
@@ -164,14 +162,17 @@ describe('POST /api/courses', () => {
     const stored = await Course.findById(course._id).lean();
     expect(stored.creator).toBe(ALICE);
     expect(stored.topic).toBe('Intro to React Hooks');
-    expect(stored.options).toEqual({ sideQuest: false, hinglishAudio: true });
+    expect(stored).not.toHaveProperty('options');
+    expect(stored.tags).toEqual(['react', 'hooks']);
     expect(stored.modules).toHaveLength(4);
 
     const lessons = await Lesson.find({ course: course._id }).lean();
     expect(lessons).toHaveLength(12);
     expect(lessons.every((l) => l.isEnriched === false && l.content.length === 0)).toBe(true);
     expect(lessons.every((l) => l.status === 'pending')).toBe(true);
-    expect(course.options).toEqual({ sideQuest: false, hinglishAudio: true });
+    expect(course.tags).toEqual(['react', 'hooks']);
+    expect(course).not.toHaveProperty('options');
+    expect(lessons.every((l) => l.keyTopics.join() === 'useState,re-rendering')).toBe(true);
     expect(lessonQueue.ensureQueued).toHaveBeenCalledTimes(1);
     expect(String(lessonQueue.ensureQueued.mock.calls[0][0])).toBe(course._id);
     const firstModule = await Module.findOne({ course: course._id, order: 1 }).lean();
@@ -187,13 +188,28 @@ describe('POST /api/courses', () => {
     ['missing depth', { topic: 'React' }, 'Choose a course depth.'],
     ['unknown depth', { topic: 'React', depth: 'huge' }, 'Choose a course depth.'],
     ['inherited-key depth', { topic: 'React', depth: 'constructor' }, 'Choose a course depth.'],
-    ['non-boolean sideQuest', { topic: 'React', depth: 'quick', sideQuest: 'yes' }, 'Invalid course options.'],
-    ['non-boolean hinglishAudio', { topic: 'React', depth: 'quick', hinglishAudio: 1 }, 'Invalid course options.'],
   ])('400 for %s', async (_name, body, message) => {
     const res = await as(ALICE).post('/api/courses').send(body);
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ message });
     expect(generateCourseOutline).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['boolean flags', { sideQuest: true, hinglishAudio: false }],
+    ['non-boolean flags', { sideQuest: 'yes', hinglishAudio: 1 }],
+  ])('ignores the removed options sent by an older client (%s)', async (_name, extras) => {
+    generateCourseOutline.mockResolvedValueOnce(makeOutline());
+    const res = await as(ALICE)
+      .post('/api/courses')
+      .send({ ...validBody, ...extras });
+
+    expect(res.status).toBe(201);
+    expect(generateCourseOutline).toHaveBeenCalledWith(validBody);
+    const stored = await Course.collection.findOne({ _id: new mongoose.Types.ObjectId(res.body.course._id) });
+    for (const field of ['options', 'sideQuest', 'hinglishAudio']) {
+      expect(stored).not.toHaveProperty(field);
+    }
   });
 
   it('accepts a 200-character topic', async () => {
@@ -307,6 +323,30 @@ describe('GET /api/courses/:courseId/outline', () => {
       .send({ lessonId: modules[0].lessons[0]._id, completed: true });
     const after = await as(ALICE).get(`/api/courses/${course._id}/outline`);
     expect(after.body.course.modules[0].lessons[0].completed).toBe(true);
+  });
+
+  it('returns tags and key topics, and no options', async () => {
+    const course = await createFor(ALICE);
+    const res = await as(ALICE).get(`/api/courses/${course._id}/outline`);
+
+    expect(res.body.course.tags).toEqual(['react', 'hooks']);
+    expect(res.body.course).not.toHaveProperty('options');
+    expect(res.body.course.modules[0].lessons[0].keyTopics).toEqual(['useState', 're-rendering']);
+  });
+
+  it('returns empty tags and key topics for a course made before them', async () => {
+    const course = await createFor(ALICE);
+    await Course.collection.updateMany({}, { $unset: { tags: '' } });
+    await Lesson.collection.updateMany({}, { $unset: { keyTopics: '' } });
+
+    const outline = await as(ALICE).get(`/api/courses/${course._id}/outline`);
+    expect(outline.status).toBe(200);
+    expect(outline.body.course.tags).toEqual([]);
+    expect(outline.body.course.modules[0].lessons[0].keyTopics).toEqual([]);
+
+    const list = await as(ALICE).get('/api/courses');
+    expect(list.status).toBe(200);
+    expect(list.body.courses[0].tags).toEqual([]);
   });
 
   it('returns per-lesson status and ready / failed / total counts, and asks the queue to run', async () => {

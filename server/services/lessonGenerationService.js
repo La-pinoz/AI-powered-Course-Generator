@@ -8,6 +8,7 @@ const AI_TIMEOUT_MESSAGE = 'Writing this lesson timed out. Please try again.';
 
 export const BLOCK_TYPES = ['heading', 'paragraph', 'list', 'code', 'example', 'callout', 'mcq'];
 export const CALLOUT_TONES = ['tip', 'note', 'warning'];
+export const READING_KINDS = ['article', 'documentation', 'book', 'tutorial'];
 export const CODE_LANGUAGES = [
   'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'ruby', 'php',
   'swift', 'kotlin', 'sql', 'bash', 'shell', 'html', 'css', 'json', 'yaml', 'markdown', 'text',
@@ -27,6 +28,9 @@ const EXPLANATION_BLOCKS = { min: 3, max: 40 };
 const MCQ_COUNT = { min: 4, max: 5 };
 const LIST_ITEMS = { min: 2, max: 8 };
 const VIDEO_QUERY = { min: 3, max: 100 };
+const READINGS = { max: 4, titleLength: 120, queryLength: 100 };
+// Not a bare "http": "An overview of HTTP" is a real title. http:// and https:// both contain "://".
+const URL_LIKE = /:\/\/|www\./i;
 
 // What the model returns is split in two arrays, so the quiz can't end up mid-explanation and each
 // question always has its own required fields. toContent() merges them into the stored `content`.
@@ -51,6 +55,11 @@ const questionProperties = {
   answer: { type: Type.INTEGER },
   explanation: { type: Type.STRING },
 };
+const readingProperties = {
+  title: { type: Type.STRING },
+  kind: { type: Type.STRING, enum: READING_KINDS },
+  searchQuery: { type: Type.STRING },
+};
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -64,11 +73,15 @@ const responseSchema = {
       type: Type.ARRAY,
       items: { type: Type.OBJECT, properties: questionProperties, required: Object.keys(questionProperties) },
     },
+    readings: {
+      type: Type.ARRAY,
+      items: { type: Type.OBJECT, properties: readingProperties, required: Object.keys(readingProperties) },
+    },
   },
-  required: ['summary', 'videoQuery', 'explanation', 'quiz'],
+  required: ['summary', 'videoQuery', 'explanation', 'quiz', 'readings'],
 };
 
-// Model output → { summary, videoQuery, content } with the questions as trailing `mcq` blocks.
+// Model output → { summary, videoQuery, content, readings } with the questions as trailing `mcq` blocks.
 // Anything already in the stored shape (a `content` array) passes through unchanged.
 export function toContent(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.explanation)) return raw;
@@ -80,6 +93,7 @@ export function toContent(raw) {
       ...raw.explanation,
       ...quiz.map((question) => ({ ...(question && typeof question === 'object' ? question : {}), type: 'mcq' })),
     ],
+    readings: raw.readings,
   };
 }
 
@@ -101,9 +115,11 @@ Previous lesson: ${prevLesson?.title ?? '(this is the first lesson)'}
 Next lesson: ${nextLesson?.title ?? '(this is the last lesson)'}
 Learning objectives:
 ${list(lesson.objectives, '- (none given; infer them from the lesson title)')}
+Key topics:
+${list(lesson.keyTopics, '- (none given)')}
 DATA>>>
 
-Return JSON with four fields: "summary", "videoQuery", "explanation" (an array of blocks) and "quiz" (an array of questions).
+Return JSON with five fields: "summary", "videoQuery", "explanation" (an array of blocks), "quiz" (an array of questions) and "readings" (an array of further reading suggestions).
 
 Every block in "explanation" has the same fields: type, text, title, tone, ordered, items and language. Fill in the ones the block type uses; give every other field an empty value ("" for text fields, [] for items, false for ordered, "note" for tone). What each type needs:
 - "heading": text (a short sub-heading).
@@ -114,13 +130,14 @@ Every block in "explanation" has the same fields: type, text, title, tone, order
 - "callout": tone ("tip", "note" or "warning") and text (a common mistake or rule of thumb).
 
 Rules:
-- Cover every learning objective.
+- Cover every learning objective and every key topic given.
 - Write 400-900 words in total across the explanation blocks. Do not repeat the previous lesson and do not jump ahead into the next one.
 - Include at least one "example" block.
 - Use plain text. The only formatting allowed inside text is **bold** and \`inline code\`. No markdown headings, no links, no URLs, no HTML.
 - "quiz" has exactly 5 multiple-choice questions that test understanding rather than recall. Each has "question", exactly 4 distinct "options" with plausible wrong answers, "answer" (the 0-based index of the correct option) and "explanation" (why it is right).
 - "summary" is a 2-3 sentence recap of the lesson.
 - "videoQuery" is a specific English YouTube search phrase for this lesson, without quotes or search operators.
+- "readings" has 2 to 4 well-known, real resources that fit this lesson. Each has "title" (the resource's name, at most ${READINGS.titleLength} characters), "kind" (${READING_KINDS.map((kind) => `"${kind}"`).join(', ')}) and "searchQuery" (a web search phrase of at most ${READINGS.queryLength} characters that is likely to find it). Never write a URL or web address in any field.
 - Return raw JSON only, matching the schema.`;
 }
 
@@ -193,7 +210,34 @@ const cleanBlock = (raw) => {
   }
 };
 
-// Returns { summary, videoQuery, content } with every block cleaned, or throws a plain Error.
+// Why a suggestion can't be used, or null when it is fine.
+const readingProblem = ({ title, searchQuery }) => {
+  if (!title || !searchQuery) return 'empty title or search query';
+  if (title.length > READINGS.titleLength) return 'title is too long';
+  if (searchQuery.length > READINGS.queryLength) return 'search query is too long';
+  if (URL_LIKE.test(title) || URL_LIKE.test(searchQuery)) return 'looks like it contains a URL';
+  return null;
+};
+
+// "Further reading" suggestions. Unlike the content, they never fail a lesson: a bad one is dropped
+// (and the reason logged), because an extra isn't worth another Gemini call.
+export function validateReadings(raw) {
+  const readings = new Map(); // lower-case search query → reading
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const reading = {
+      title: typeof item?.title === 'string' ? item.title.trim() : '',
+      kind: READING_KINDS.includes(item?.kind) ? item.kind : 'article',
+      searchQuery: typeof item?.searchQuery === 'string' ? item.searchQuery.trim() : '',
+    };
+    const key = reading.searchQuery.toLowerCase();
+    const problem = readingProblem(reading) ?? (readings.has(key) ? 'duplicate search query' : null);
+    if (problem) console.warn(`[lessons] dropped a reading: ${problem}`);
+    else readings.set(key, reading);
+  }
+  return [...readings.values()].slice(0, READINGS.max);
+}
+
+// Returns { summary, videoQuery, content, readings } with every block cleaned, or throws a plain Error.
 // geminiClient treats a throw as bad output and retries (and logs the message).
 // Lenient where it is safe: blocks with an empty body are dropped, and extra questions beyond 5 are
 // cut. Strict where it matters: needs a paragraph, an example and 4+ valid questions.
@@ -219,7 +263,7 @@ export function validateLessonContent(raw) {
   if (!explanation.some((block) => block.type === 'example')) throw fail('needs an example with text');
   if (mcqs.length < MCQ_COUNT.min) throw fail(`needs at least ${MCQ_COUNT.min} questions, got ${mcqs.length}`);
 
-  return { summary, videoQuery, content: [...explanation, ...mcqs] };
+  return { summary, videoQuery, content: [...explanation, ...mcqs], readings: validateReadings(raw.readings) };
 }
 
 // `input` is the object buildLessonPrompt takes. Throws 503 busy, 502 failed or 504 timeout.

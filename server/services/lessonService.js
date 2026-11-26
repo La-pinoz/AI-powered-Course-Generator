@@ -2,6 +2,7 @@ import Course from '../models/Course.js';
 import Module from '../models/Module.js';
 import Lesson from '../models/Lesson.js';
 import * as lessonQueue from './lessonQueue.js';
+import { readingUrl } from '../utils/readingUrl.js';
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -34,11 +35,19 @@ export async function getLesson(sub, courseId, lessonId) {
     title: lesson.title,
     order: lesson.order,
     objectives: lesson.objectives ?? [],
+    keyTopics: lesson.keyTopics ?? [],
+    readings: [],
     status,
   };
   if (status === 'ready') {
     response.summary = lesson.summary ?? '';
     response.content = lesson.content ?? [];
+    response.readings = (lesson.readings ?? []).map(({ title, kind, searchQuery }) => ({
+      title,
+      kind,
+      searchQuery,
+      url: readingUrl(searchQuery),
+    }));
   }
   return response;
 }

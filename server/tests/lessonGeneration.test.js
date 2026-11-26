@@ -17,9 +17,10 @@ vi.mock('@google/genai', () => ({
   Type: { OBJECT: 'OBJECT', STRING: 'STRING', ARRAY: 'ARRAY', BOOLEAN: 'BOOLEAN', INTEGER: 'INTEGER' },
 }));
 
-const { buildLessonPrompt, validateLessonContent, generateLessonContent, toContent } = await import(
+const { buildLessonPrompt, validateLessonContent, validateReadings, generateLessonContent, toContent } = await import(
   '../services/lessonGenerationService.js'
 );
+const { readingUrl } = await import('../utils/readingUrl.js');
 
 const mcq = (n = 1) => ({
   type: 'mcq',
@@ -162,11 +163,131 @@ describe('validateLessonContent', () => {
   });
 });
 
+const reading = (n = 1, extra = {}) => ({
+  title: `Resource ${n}`,
+  kind: 'article',
+  searchQuery: `resource ${n} guide`,
+  ...extra,
+});
+
+describe('validateReadings', () => {
+  beforeEach(() => vi.spyOn(console, 'warn').mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps good items, trimmed and with only the three fields', () => {
+    const result = validateReadings([
+      { title: '  MDN: Closures ', kind: 'documentation', searchQuery: ' mdn javascript closures ', url: 'x' },
+      reading(2, { kind: 'book' }),
+      reading(3, { kind: 'tutorial' }),
+    ]);
+    expect(result).toEqual([
+      { title: 'MDN: Closures', kind: 'documentation', searchQuery: 'mdn javascript closures' },
+      reading(2, { kind: 'book' }),
+      reading(3, { kind: 'tutorial' }),
+    ]);
+  });
+
+  it.each([
+    ['an empty title', { title: '  ' }],
+    ['an empty search query', { searchQuery: '' }],
+    ['a missing title', { title: undefined }],
+    ['a non-string search query', { searchQuery: 42 }],
+    ['a title over 120 characters', { title: 'x'.repeat(121) }],
+    ['a search query over 100 characters', { searchQuery: 'x'.repeat(101) }],
+    ['http in the title', { title: 'Read http://example.com' }],
+    ['https in the search query', { searchQuery: 'HTTPS://evil.example' }],
+    ['www. in the title', { title: 'Visit WWW.example.com' }],
+    [':// in the search query', { searchQuery: 'ftp://files.example' }],
+  ])('drops an item with %s, keeps the rest and logs why', (_name, extra) => {
+    expect(validateReadings([reading(1, extra), reading(2)])).toEqual([reading(2)]);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('dropped a reading'));
+  });
+
+  it.each([['MDN: An overview of HTTP'], ['HTTPS explained'], ['Angular HttpClient guide']])(
+    'keeps %j: naming HTTP is not a web address',
+    (text) => {
+      const item = reading(1, { title: text, searchQuery: text.toLowerCase() });
+      expect(validateReadings([item])).toEqual([item]);
+    },
+  );
+
+  it('keeps a title of exactly 120 and a query of exactly 100 characters', () => {
+    const item = reading(1, { title: 'x'.repeat(120), searchQuery: 'y'.repeat(100) });
+    expect(validateReadings([item])).toEqual([item]);
+  });
+
+  it.each([['video'], [''], [undefined], [7]])('turns the unknown kind %j into "article"', (kind) => {
+    expect(validateReadings([reading(1, { kind })])[0].kind).toBe('article');
+  });
+
+  it('removes duplicate search queries, ignoring case', () => {
+    const result = validateReadings([reading(1), reading(2, { searchQuery: 'RESOURCE 1 GUIDE' }), reading(3)]);
+    expect(result).toEqual([reading(1), reading(3)]);
+  });
+
+  it('keeps at most 4', () => {
+    expect(validateReadings([1, 2, 3, 4, 5, 6].map((n) => reading(n)))).toEqual([1, 2, 3, 4].map((n) => reading(n)));
+  });
+
+  it.each([[undefined], [null], ['readings'], [{}], [[null, 'text', 5, []]]])(
+    'returns [] for the garbage input %j',
+    (input) => {
+      expect(validateReadings(input)).toEqual([]);
+    },
+  );
+});
+
+describe('validateLessonContent: readings', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the cleaned readings beside the content', () => {
+    expect(validateLessonContent({ ...valid(), readings: [reading(1)] }).readings).toEqual([reading(1)]);
+  });
+
+  it('still accepts a lesson whose readings are all invalid', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = validateLessonContent({ ...valid(), readings: [reading(1, { title: '' })] });
+    expect(result.readings).toEqual([]);
+    expect(result.content).toHaveLength(7);
+  });
+});
+
+describe('readingUrl', () => {
+  it.each([
+    ['react hooks'],
+    ['a&b=c?d#e/f'],
+    ['x&q=other'],
+    ['../../@evil.example'],
+    ['//evil.example/path'],
+    ['100% C++ "quotes"'],
+  ])('keeps %j inside the query of the one search host', (query) => {
+    const link = readingUrl(query);
+    expect(link.startsWith('https://www.google.com/search?q=')).toBe(true);
+    const url = new URL(link);
+    expect(url.host).toBe('www.google.com');
+    expect(url.pathname).toBe('/search');
+    expect(url.hash).toBe('');
+    expect([...url.searchParams]).toEqual([['q', query]]);
+  });
+
+  it('encodes &, ?, #, / and spaces', () => {
+    expect(readingUrl('a b&c?d#e/f').split('?q=')[1]).toBe('a+b%26c%3Fd%23e%2Ff');
+  });
+
+  it('does not throw on a broken character from the model', () => {
+    expect(() => readingUrl('bad \ud800 text')).not.toThrow();
+  });
+});
+
 describe('buildLessonPrompt', () => {
   const input = {
     course: { title: 'Agentic AI', description: 'About agents.' },
     module: { title: 'Foundations' },
-    lesson: { title: 'What are AI Agents', objectives: ['Define an agent', 'Name its parts'] },
+    lesson: {
+      title: 'What are AI Agents',
+      objectives: ['Define an agent', 'Name its parts'],
+      keyTopics: ['agent loop', 'tool calling'],
+    },
     prevLesson: { title: 'Course intro' },
     nextLesson: { title: 'Tools and memory' },
   };
@@ -186,6 +307,20 @@ describe('buildLessonPrompt', () => {
     }
   });
 
+  it('gives the key topics as data and asks the lesson to cover them', () => {
+    const prompt = buildLessonPrompt(input);
+    const inside = prompt.slice(prompt.indexOf('<<<DATA'), prompt.indexOf('DATA>>>'));
+    expect(inside).toContain('- agent loop');
+    expect(inside).toContain('- tool calling');
+    expect(prompt.replace(inside, '')).not.toContain('tool calling');
+    expect(prompt).toContain('every key topic');
+  });
+
+  it('works for a lesson made before key topics', () => {
+    const prompt = buildLessonPrompt({ ...input, lesson: { title: 'Old lesson', objectives: [] } });
+    expect(prompt).toContain('Key topics:\n- (none given)');
+  });
+
   it('says so when there is no previous or next lesson', () => {
     const prompt = buildLessonPrompt({ ...input, prevLesson: null, nextLesson: null });
     expect(prompt).toContain('this is the first lesson');
@@ -197,6 +332,14 @@ describe('buildLessonPrompt', () => {
     expect(prompt).toMatch(/"example": BOTH title and text/);
     expect(prompt).toMatch(/"list": items/);
     expect(prompt).toContain('exactly 5 multiple-choice questions');
+  });
+
+  it('asks for 2-4 readings with a search phrase, and still forbids URLs', () => {
+    const prompt = buildLessonPrompt(input);
+    expect(prompt).toMatch(/"readings" has 2 to 4/);
+    expect(prompt).toContain('"searchQuery"');
+    expect(prompt).toContain('no links, no URLs, no HTML');
+    expect(prompt).toContain('Never write a URL');
   });
 
   it('does not mention the Side Quest or Hinglish flags', () => {
@@ -266,10 +409,11 @@ describe('generateLessonContent', () => {
     return outcome;
   }
 
-  it('returns validated content', async () => {
-    generateContent.mockResolvedValueOnce({ text: JSON.stringify(modelOutput()) });
+  it('returns validated content and readings', async () => {
+    generateContent.mockResolvedValueOnce({ text: JSON.stringify({ ...modelOutput(), readings: [reading(1)] }) });
     const { value } = await settle(generateLessonContent(input));
     expect(value.content).toHaveLength(7);
+    expect(value.readings).toEqual([reading(1)]);
     expect(generateContent.mock.calls[0][0].config.responseMimeType).toBe('application/json');
   });
 
@@ -286,7 +430,10 @@ describe('generateLessonContent', () => {
     generateContent.mockResolvedValueOnce({ text: JSON.stringify(modelOutput()) });
     await settle(generateLessonContent(input));
     const { responseSchema } = generateContent.mock.calls[0][0].config;
-    expect(responseSchema.required).toEqual(['summary', 'videoQuery', 'explanation', 'quiz']);
+    expect(responseSchema.required).toEqual(['summary', 'videoQuery', 'explanation', 'quiz', 'readings']);
+    const readingItem = responseSchema.properties.readings.items;
+    expect([...readingItem.required].sort()).toEqual(['kind', 'searchQuery', 'title']);
+    expect(readingItem.properties.kind.enum).toEqual(['article', 'documentation', 'book', 'tutorial']);
     const block = responseSchema.properties.explanation.items;
     expect([...block.required].sort()).toEqual(Object.keys(block.properties).sort());
     expect(block.properties.type.enum).not.toContain('mcq');

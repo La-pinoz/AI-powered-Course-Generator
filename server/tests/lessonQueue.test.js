@@ -17,6 +17,7 @@ const result = (title) => ({
   content: [{ type: 'paragraph', text: `About ${title}` }],
   summary: `Summary of ${title}`,
   videoQuery: `${title} explained`,
+  readings: [{ title: `Book on ${title}`, kind: 'book', searchQuery: `${title} book` }],
 });
 
 // Builds a course with `modules` × `perModule` pending lessons titled "L<module>.<lesson>".
@@ -35,6 +36,7 @@ async function seedCourse(modules = 2, perModule = 3) {
         title: `L${m}.${l}`,
         order: l,
         objectives: ['Understand it'],
+        keyTopics: [`topic ${m}.${l}`],
       });
     }
   }
@@ -120,11 +122,22 @@ describe('lesson queue', () => {
     expect(first).toMatchObject({
       summary: 'Summary of L1.1',
       videoQuery: 'L1.1 explained',
-      contentVersion: 1,
+      contentVersion: 2,
       attempts: 1,
     });
     expect(first.content).toEqual([{ type: 'paragraph', text: 'About L1.1' }]);
+    expect(first.readings).toEqual([{ title: 'Book on L1.1', kind: 'book', searchQuery: 'L1.1 book' }]);
     expect(first.generatedAt).toBeInstanceOf(Date);
+  });
+
+  it('still marks a lesson ready when none of its readings were usable', async () => {
+    generateLessonContent.mockImplementation(async (input) => ({ ...result(input.lesson.title), readings: [] }));
+    const { courseId } = await seedCourse(1, 1);
+    await queue.ensureQueued(courseId);
+    await queue.whenIdle();
+
+    const lesson = await Lesson.findOne({ course: courseId }).lean();
+    expect(lesson).toMatchObject({ status: 'ready', contentVersion: 2, readings: [] });
   });
 
   it('gives the prompt the course, module and neighbouring lessons, across module boundaries', async () => {
@@ -136,7 +149,7 @@ describe('lesson queue', () => {
     expect(inputs[0]).toMatchObject({
       course: { title: 'Course', description: 'About the course' },
       module: { title: 'Module 1' },
-      lesson: { title: 'L1.1' },
+      lesson: { title: 'L1.1', keyTopics: ['topic 1.1'] },
       prevLesson: null,
       nextLesson: { title: 'L1.2' },
     });

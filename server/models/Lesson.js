@@ -32,6 +32,16 @@ const audioSchema = new mongoose.Schema(
   { _id: false },
 );
 
+// One "Further reading" suggestion. No URL is stored: the link is built from the search phrase.
+const readingSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    kind: { type: String, required: true }, // article | documentation | book | tutorial
+    searchQuery: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const lessonSchema = new mongoose.Schema(
   {
     course: { type: ObjectId, ref: 'Course', required: true, index: true }, // for cascade delete
@@ -39,13 +49,15 @@ const lessonSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     order: { type: Number, required: true }, // 1-based within the module
     objectives: [String], // from the outline
+    keyTopics: [String], // from the outline; the concepts this lesson covers
     // Lifecycle of the content, written by the background lesson queue.
     status: { type: String, enum: LESSON_STATUSES, default: 'pending' },
     content: { type: [Mixed], default: [] }, // ordered typed blocks: explanation first, mcq last
     isEnriched: { type: Boolean, default: false }, // true together with status 'ready'
     summary: { type: String },
     videoQuery: { type: String }, // YouTube search phrase, used by the video session
-    contentVersion: { type: Number, default: 1 }, // content format version
+    readings: { type: [readingSchema], default: [] }, // not content blocks, so the audio source ignores them
+    contentVersion: { type: Number, default: 1 }, // content format version; 2 = written with readings
     generationStartedAt: { type: Date }, // detects a stuck 'generating' lesson after a restart
     generatedAt: { type: Date },
     attempts: { type: Number, default: 0 },

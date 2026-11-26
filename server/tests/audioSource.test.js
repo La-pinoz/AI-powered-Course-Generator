@@ -93,6 +93,14 @@ describe('sourceHashOf', () => {
     expect(sourceHashOf(lesson(base))).toBe(sourceHashOf(lesson(structuredClone(base))));
   });
 
+  // Readings are a lesson field, not content, so audio made before them stays cached.
+  it('is the same for a lesson with and without further reading', () => {
+    const readings = [{ title: 'READING-TITLE', kind: 'book', searchQuery: 'READING-QUERY' }];
+    const withReadings = lesson(base, { readings, keyTopics: ['KEY-TOPIC'] });
+    expect(buildAudioSource(withReadings)).toEqual(buildAudioSource(lesson(base)));
+    expect(sourceHashOf(withReadings)).toBe(sourceHashOf(lesson(base)));
+  });
+
   it('ignores quiz and videoQuery changes', () => {
     const changed = base.map((b) => (b.type === 'mcq' ? { ...b, question: 'Something else entirely?' } : b));
     expect(sourceHashOf(lesson(changed, { videoQuery: 'other' }))).toBe(sourceHashOf(lesson(base)));
