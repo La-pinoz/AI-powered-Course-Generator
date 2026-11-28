@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { parseClientOrigins } from './parseClientOrigins.js';
 
 const REQUIRED = [
   'PORT',
@@ -11,6 +12,9 @@ const REQUIRED = [
 ];
 
 const missing = REQUIRED.filter((name) => !process.env[name]?.trim());
+const clientOrigins = parseClientOrigins(process.env.CLIENT_ORIGIN);
+// A value such as ",," is set but names no origin, so it counts as missing too.
+if (clientOrigins.length === 0 && !missing.includes('CLIENT_ORIGIN')) missing.push('CLIENT_ORIGIN');
 
 if (missing.length > 0) {
   console.error(
@@ -43,7 +47,7 @@ const config = Object.freeze({
   mongodbUri: process.env.MONGODB_URI,
   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL,
   auth0Audience: process.env.AUTH0_AUDIENCE,
-  clientOrigin: process.env.CLIENT_ORIGIN,
+  clientOrigins,
   geminiApiKey: process.env.GEMINI_API_KEY,
   geminiModel: process.env.GEMINI_MODEL,
   // Optional: a second model tried when the first is busy or slow.
