@@ -43,6 +43,8 @@ Two independent npm packages (no root `package.json`, no workspaces). Run npm co
 
 ## Commands
 
+Both packages pin Node 22 (`engines.node: "22.x"`). CI is `.github/workflows/ci.yml` (spec `.claude/specs/10_ci-pipeline.md`): on every pull request into `main` and push to `main`, the `server` job runs `npm ci` and `npm test`, and the `client` job runs `npm ci`, `lint`, `test` and `build`. It reads the Node version from each `package.json`, uses no secrets and does not deploy. Branch protection refers to the job names, so don't rename them.
+
 Client (`cd client`):
 - `npm run dev` — Vite dev server
 - `npm run build` / `npm run preview`
